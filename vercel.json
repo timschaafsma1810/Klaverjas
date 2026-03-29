@@ -1,0 +1,13 @@
+{
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [{"type": "host", "value": "klaverjas.vercel.app"}],
+      "destination": "https://klaverjasscore.nl/$1",
+      "permanent": true
+    }
+  ],
+  "rewrites": [
+    { "source": "/((?!sounds|assets|favicon|manifest).*)", "destination": "/index.html" }
+  ]
+}
