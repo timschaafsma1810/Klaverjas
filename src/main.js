@@ -63,80 +63,60 @@ async function saveAll(){
 
 // Recalculate per-player aggregated stats from all stored games.
 function recalcPlayerStats(){
-  // Reset aggregated fields for each player
+  // Reset all aggregated fields
   players.forEach(p=>{
-    p.games=0;
-    p.wins=0;
-    p.losses=0;
-    p.draws=0;
-    p.rounds=0;
-    p.totalScore=0;
-    p.highScore=0;
-    p.nat=0;
-    p.verz=0;
-    p.pit=0;
-    p.natAsMaker=0;
-    p.pitAsMaker=0;
-    p.verzAsMaker=0;
+    p.games=0; p.wins=0; p.losses=0; p.draws=0;
+    p.rounds=0; p.totalScore=0; p.highScore=0;
+    p.nat=0; p.verz=0; p.pit=0;
+    p.natAsMaker=0; p.pitAsMaker=0; p.verzAsMaker=0;
+    p.roundsPlayed=0; p.roundsKaap=0;
   });
-  // Aggregate stats from each stored game
   games.forEach(g=>{
-    if(g.active) return; // skip active games
-    // Determine final scores
-    const finalWij = (typeof g.finalWij === 'number') ? g.finalWij : g.scoreWij;
-    const finalZij = (typeof g.finalZij === 'number') ? g.finalZij : g.scoreZij;
-    const wijWon = finalWij > finalZij;
-    const draw    = finalWij === finalZij;
-    // Helper: count special tags for a team in this game
-    function countSp(tag){
-      return g.rounds.filter(r => r.special && r.special.includes(tag)).length;
-    }
-    // Per-player updates (inclusief wisselspelers)
+    if(g.active) return;
+    const finalWij=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
+    const finalZij=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
+    const wijWon=finalWij>finalZij;
+    const draw=finalWij===finalZij;
+    function countSp(tag){return g.rounds.filter(r=>r.special&&r.special.includes(tag)).length;}
     const allWijIds=[...g.wij,...(g.wijBench||[])];
     const allZijIds=[...g.zij,...(g.zijBench||[])];
     [...allWijIds,...allZijIds].forEach(pid=>{
-      const p=getPlayer(pid); if(!p) return;
+      const p=getPlayer(pid);if(!p) return;
       const isWij=allWijIds.includes(pid);
-      p.games++;
-      p.rounds += g.rounds.length;
+      p.games++; p.rounds+=g.rounds.length;
       if(draw) p.draws++;
-      else if((isWij && wijWon) || (!isWij && !wijWon)) p.wins++;
+      else if((isWij&&wijWon)||(!isWij&&!wijWon)) p.wins++;
       else p.losses++;
-      const myScore = isWij ? finalWij : finalZij;
-      p.totalScore += myScore;
-      if(myScore > p.highScore) p.highScore = myScore;
-      if(isWij){
-        p.nat  += countSp('NAT WIJ');
-        p.verz += countSp('VERZ WIJ');
-        p.pit  += countSp('PIT WIJ');
-      } else {
-        p.nat  += countSp('NAT ZIJ');
-        p.verz += countSp('VERZ ZIJ');
-        p.pit  += countSp('PIT ZIJ');
-      }
+      const myScore=isWij?finalWij:finalZij;
+      p.totalScore+=myScore;
+      if(myScore>p.highScore) p.highScore=myScore;
+      if(isWij){p.nat+=countSp('NAT WIJ');p.verz+=countSp('VERZ WIJ');p.pit+=countSp('PIT WIJ');}
+      else{p.nat+=countSp('NAT ZIJ');p.verz+=countSp('VERZ ZIJ');p.pit+=countSp('PIT ZIJ');}
     });
-    // Maker stats from rounds
     g.rounds.forEach(r=>{
-      if(r.spelWij){
-        const pp=getPlayer(+r.spelWij);
+      const makerId=r.spelWij||r.spelZij;
+      if(makerId){
+        const pp=getPlayer(+makerId);
         if(pp){
-          if(r.special && r.special.includes('NAT WIJ')) pp.natAsMaker++;
-          if(r.special && r.special.includes('PIT WIJ')) pp.pitAsMaker++;
-          if(r.special && r.special.includes('VERZ WIJ')) pp.verzAsMaker++;
+          pp.roundsPlayed++;
+          if(r.uitId&&String(makerId)!==String(r.uitId)) pp.roundsKaap++;
+          if(r.spelWij){
+            if(r.special&&r.special.includes('NAT WIJ')) pp.natAsMaker++;
+            if(r.special&&r.special.includes('PIT WIJ')) pp.pitAsMaker++;
+          } else {
+            if(r.special&&r.special.includes('NAT ZIJ')) pp.natAsMaker++;
+            if(r.special&&r.special.includes('PIT ZIJ')) pp.pitAsMaker++;
+          }
         }
       }
-      if(r.spelZij){
-        const pp=getPlayer(+r.spelZij);
-        if(pp){
-          if(r.special && r.special.includes('NAT ZIJ')) pp.natAsMaker++;
-          if(r.special && r.special.includes('PIT ZIJ')) pp.pitAsMaker++;
-          if(r.special && r.special.includes('VERZ ZIJ')) pp.verzAsMaker++;
-        }
+      // Verz: gebruik verzPlayerId als beschikbaar (kan afwijken van de maker)
+      if(r.special&&r.special.includes('VERZ')){
+        const vId=r.verzPlayerId||r.spelWij||r.spelZij;
+        if(vId){const vp=getPlayer(+vId);if(vp) vp.verzAsMaker++;}
       }
     });
   });
-  // Persist recalculated stats
-  saveAll();
+  // Geen saveAll() hier — voorkomt Convex-lus en geflicker
 }
 
 // Auto-save on unload
@@ -145,20 +125,33 @@ window.addEventListener('beforeunload',()=>{if(current&&current.active) saveAll(
 // ══════════════════════════════════════════
 //  NAVIGATION
 // ══════════════════════════════════════════
+// Voorkom dat Safari automatisch scrollposities herstelt bij pushState/popState
+if('scrollRestoration' in history) history.scrollRestoration='manual';
+
+function _scrollTop(){
+  window.scrollTo(0,0);
+  document.documentElement.scrollTop=0;
+  document.body.scrollTop=0;
+}
 function switchView(name, pushHistory=true){
-  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
-  const viewEl=document.getElementById('view-'+name);
-  const navEl=document.getElementById('nav-'+name);
-  if(viewEl) viewEl.classList.add('active');
-  if(navEl) navEl.classList.add('active');
+  const already=document.getElementById('view-'+name)?.classList.contains('active');
+  if(!already){
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+    const viewEl=document.getElementById('view-'+name);
+    const navEl=document.getElementById('nav-'+name);
+    if(viewEl) viewEl.classList.add('active');
+    if(navEl) navEl.classList.add('active');
+    if(pushHistory) history.pushState({view:name},'','/'+name);
+  }
   if(name==='home') renderHome();
   if(name==='players') renderPlayers();
   if(name==='history') renderHistory();
   if(name==='game') renderGame();
   if(name==='stats') renderStats();
   if(name==='toernooi') renderToernooi?.();
-  if(pushHistory) history.pushState({view:name},'','/'+name);
+  _scrollTop();
+  requestAnimationFrame(_scrollTop);
 }
 window.addEventListener('popstate',e=>{
   const name=(e.state&&e.state.view)||'home';
@@ -175,6 +168,16 @@ window.addEventListener('popstate',e=>{
 // ══════════════════════════════════════════
 //  TOAST
 // ══════════════════════════════════════════
+let _jagenTimer=null;
+function showJagenToast(msg){
+  const t=document.getElementById('jagen-toast');
+  if(!t) return;
+  if(_jagenTimer) clearTimeout(_jagenTimer);
+  t.textContent=msg;
+  t.classList.add('show');
+  _jagenTimer=setTimeout(()=>t.classList.remove('show'),4000);
+}
+
 function showToast(msg,err=false){
   const t=document.getElementById('toast');
   t.textContent=msg;t.className='show'+(err?' error':'');
@@ -184,9 +187,12 @@ function showToast(msg,err=false){
 // ══════════════════════════════════════════
 //  MODALS
 // ══════════════════════════════════════════
+let _modalJustClosed=false;
 function openModal(id){document.getElementById(id).classList.add('open')}
 function closeModal(id){
   document.getElementById(id).classList.remove('open');
+  _modalJustClosed=true;
+  setTimeout(()=>{_modalJustClosed=false;},350);
   if(id==='modal-verlies-video'){
     const vid=document.getElementById('verlies-video-player');
     if(vid){vid.pause();vid.currentTime=0;}
@@ -209,6 +215,7 @@ const _SOUNDS={
   '/sounds/nat.mp3': null,
   '/sounds/verz.mp3': null,
   '/sounds/pit.mp3': null,
+  '/sounds/jagen.mp3': null,
 };
 
 // Maak <audio> elementen aan en voeg toe aan DOM
@@ -220,6 +227,7 @@ const _SOUNDS={
     el.setAttribute('playsinline','');
     document.body.appendChild(el);
     _SOUNDS[url]=el;
+    el.load(); // zorg dat elk element altijd vanaf het begin start
   });
 })();
 
@@ -229,14 +237,29 @@ function _unlockAudio(){
   if(_audioUnlocked) return;
   _audioUnlocked=true;
   Object.values(_SOUNDS).forEach(el=>{
-    el.play().then(()=>{ el.pause(); el.currentTime=0; }).catch(()=>{});
+    el.volume=0;
+    el.currentTime=0;
+    el.play().then(()=>{ el.pause(); el.currentTime=0; el.volume=1; }).catch(()=>{ el.volume=1; });
   });
 }
 document.addEventListener('touchstart',_unlockAudio,{passive:true,once:true});
 document.addEventListener('click',_unlockAudio,{once:true});
+let _blockSubmit=false;
 window.addEventListener('pageshow',(e)=>{
   if(!e.persisted) return; // alleen bij bfcache-herstel
+  // Blokkeer submitRound voor 1,2s — bevroren setTimeout timers vallen anders direct af
+  _blockSubmit=true;
+  setTimeout(()=>{_blockSubmit=false;},1200);
+  // Audio volledig resetten
   Object.values(_SOUNDS).forEach(el=>{el.pause();el.currentTime=0;el.load();});
+  // Formuliervelden en stale special-flags wissen
+  ['input-wij','input-zij','input-roem-wij','input-roem-zij'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(!el) return;
+    el.value='';
+    delete el.dataset.special;
+    delete el.dataset.natTeam;
+  });
 });
 
 function playAudioFile(url,vol=1.0){
@@ -439,13 +462,26 @@ function renderPlayers(){
     const form=getPlayerForm(p.id);
     const trend=trendBadge(form.streak,form.streakType);
     const formRow=form.last5.length?`<div style="display:flex;gap:3px;margin-top:5px">${formBadges(form.last5)}${trend?`<span style="margin-left:4px;font-size:11px;align-self:center">${trend}</span>`:''}</div>`:'';
-    return `<div class="player-tile" onclick="openProfile(${p.id})">
-      <div class="avatar">${avImg}</div>
-      <div class="player-info">
-        <div class="player-name">${p.name}</div>
-        <div class="player-stats-line">🏆 ${p.wins}× gewonnen &nbsp;💀 ${p.losses}× verloren &nbsp;💧 ${p.nat}× nat</div>
-        ${formRow}
-      </div>${badge}</div>`;
+    const flame=form.streak>=3&&form.streakType==='W'?' 🔥':'';
+    return `<div class="player-tile" onclick="openProfile(${p.id})" style="padding:14px 16px">
+      <div style="display:flex;align-items:flex-start;gap:14px">
+        <div class="avatar" style="width:56px;height:56px;font-size:20px;flex-shrink:0">${avImg}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <span class="player-name" style="font-size:16px">${p.name}${flame}</span>
+            ${badge}
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;font-size:12px;color:rgba(245,240,232,.75);margin-bottom:8px">
+            <span>🏆 ${p.wins}× gewonnen</span>
+            <span>💀 ${p.losses}× verloren</span>
+            <span>💧 ${p.nat}× nat</span>
+            <span>🔵 ${p.verz||0}× verzaakt</span>
+            <span>💥 ${p.pit||0}× pit</span>
+          </div>
+          ${form.last5.length?`<div style="display:flex;gap:3px">${formBadges(form.last5)}</div>`:''}
+        </div>
+      </div>
+    </div>`;
   }).join('');
 }
 
@@ -536,15 +572,18 @@ function openProfile(id){
       <div class="stat-box"><div class="stat-value" style="color:var(--loss)">${p.losses}</div><div class="stat-label">💀 Verloren</div></div>
       <div class="stat-box"><div class="stat-value">${wr}%</div><div class="stat-label">📈 Winrate</div></div>
     </div>
-    <div style="margin-bottom:12px">
-      <div style="display:flex;justify-content:space-between;font-size:11px;color:rgba(245,240,232,.5);margin-bottom:3px"><span>Winstpercentage</span><span>${wr}%</span></div>
-      <div class="bar-wrap"><div class="bar-fill" style="width:${wr}%"></div></div>
-    </div>
 
     <div class="stat-grid" style="margin-bottom:10px">
-      <div class="stat-box"><div class="stat-value" style="color:#e74c3c">${p.nat}</div><div class="stat-label">💧 Keer nat</div></div>
-      <div class="stat-box"><div class="stat-value" style="color:#3498db">${p.verz}</div><div class="stat-label">🔵 Keer verzaakt</div></div>
-      <div class="stat-box"><div class="stat-value" style="color:#9b59b6">${p.pit}</div><div class="stat-label">💥 Keer pit</div></div>
+      <div class="stat-box">
+        <div class="stat-value" style="color:#e74c3c">${p.nat}</div>
+        <div class="stat-label">💧 Keer nat</div>
+        ${p.nat>0?`<div style="font-size:10px;color:rgba(245,240,232,.4);margin-top:3px">Zelf: ${p.natAsMaker||0}× · Mee: ${p.nat-(p.natAsMaker||0)}×</div>`:''}
+      </div>
+      <div class="stat-box">
+        <div class="stat-value" style="color:#3498db">${p.verz}</div>
+        <div class="stat-label">🔵 Keer verzaakt</div>
+        ${p.verz>0?`<div style="font-size:10px;color:rgba(245,240,232,.4);margin-top:3px">Zelf: ${p.verzAsMaker||0}× · Mee: ${p.verz-(p.verzAsMaker||0)}×</div>`:''}
+      </div>
       <div class="stat-box"><div class="stat-value">${p.highScore}</div><div class="stat-label">⭐ Hoogste score</div></div>
     </div>
     <div class="stat-grid" style="margin-bottom:10px">
@@ -565,11 +604,25 @@ function uploadPhoto(id,input){
   const file=input.files[0];if(!file) return;
   const reader=new FileReader();
   reader.onload=e=>{
-    const p=getPlayer(id);if(!p) return;
-    p.photo=e.target.result;saveAll();
-    const av=document.getElementById('profile-av-'+id);
-    if(av) av.innerHTML=`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-    renderPlayers();showToast('📷 Foto opgeslagen!');
+    const img=new Image();
+    img.onload=()=>{
+      const SIZE=200;
+      const canvas=document.createElement('canvas');
+      canvas.width=SIZE;canvas.height=SIZE;
+      const ctx=canvas.getContext('2d');
+      // Crop to square from center, then draw at SIZE×SIZE
+      const s=Math.min(img.width,img.height);
+      const ox=(img.width-s)/2;
+      const oy=(img.height-s)/2;
+      ctx.drawImage(img,ox,oy,s,s,0,0,SIZE,SIZE);
+      const dataUrl=canvas.toDataURL('image/jpeg',0.75);
+      const p=getPlayer(id);if(!p) return;
+      p.photo=dataUrl;saveAll();
+      const av=document.getElementById('profile-av-'+id);
+      if(av) av.innerHTML=`<img src="${dataUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
+      renderPlayers();showToast('📷 Foto opgeslagen!');
+    };
+    img.src=e.target.result;
   };
   reader.readAsDataURL(file);
 }
@@ -592,6 +645,22 @@ function deletePlayerConfirm(id){
 // ══════════════════════════════════════════
 //  GAME SETUP
 // ══════════════════════════════════════════
+function updateBenchOptions(){
+  const activeIds=['sel-wij1','sel-zij1','sel-wij2','sel-zij2']
+    .map(id=>document.getElementById(id)?.value).filter(Boolean);
+  const noneOpt=`<option value="">— Geen wisselspeler —</option>`;
+  const benchOpts=players
+    .filter(p=>!activeIds.includes(String(p.id)))
+    .map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  ['sel-wij3','sel-zij3','sel-wij4','sel-zij4'].forEach(sid=>{
+    const el=document.getElementById(sid);
+    if(!el) return;
+    const prev=el.value;
+    el.innerHTML=noneOpt+benchOpts;
+    el.value=prev&&!activeIds.includes(prev)?prev:'';
+  });
+}
+
 function updateStarterOptions(){
   const starterSel=document.getElementById('sel-starter');
   const seatIds=['sel-wij1','sel-zij1','sel-wij2','sel-zij2'].map(id=>document.getElementById(id)?.value).filter(Boolean);
@@ -603,6 +672,7 @@ function updateStarterOptions(){
   }).join('');
   if(uniqueIds.includes(String(prev))) starterSel.value=String(prev);
   else if(uniqueIds[0]) starterSel.value=String(uniqueIds[0]);
+  updateBenchOptions();
 }
 
 function populateSelects(){
@@ -619,15 +689,11 @@ function populateSelects(){
     if(seatDefaults[sid]!==undefined) el.value=seatDefaults[sid];
     el.onchange=updateStarterOptions;
   });
-  // Bench selects
-  const noneOpt=`<option value="">— Geen wisselspeler —</option>`;
-  ['sel-wij3','sel-zij3','sel-wij4','sel-zij4'].forEach(sid=>{
-    const el=document.getElementById(sid);
-    if(!el) return;
-    el.innerHTML=noneOpt+opts;
-    el.value='';
-  });
   updateStarterOptions();
+  // Default starter: Zij 1 (eerste na de dealer)
+  const zij1Val=document.getElementById('sel-zij1')?.value;
+  const starterSel=document.getElementById('sel-starter');
+  if(zij1Val&&starterSel) starterSel.value=String(zij1Val);
 }
 
 function openNewGameModal(){
@@ -1008,7 +1074,23 @@ function openLatestFinishedGameForEdit(){
 // ══════════════════════════════════════════
 //  SPECIAL SITUATIONS
 // ══════════════════════════════════════════
+function applySpecialAuto(type){
+  const g=current;if(!g) return;
+  const spelerId=document.getElementById('sel-speler')?.value;
+  if(type==='verz'){
+    // VERZ: eerst picker tonen, team bepalen na selectie
+    openVerzPicker();
+    return;
+  }
+  // NAT/PIT: automatisch team bepalen via geselecteerde speler
+  if(!spelerId){showToast('⚠️ Kies eerst wie speelt');return;}
+  const team=getTeamForPlayer(g,+spelerId);
+  if(!team){showToast('⚠️ Speler niet gevonden in huidig spel');return;}
+  applySpecial(type,team);
+}
+
 function applySpecial(type,team){
+  if(_modalJustClosed||_blockSubmit) return;
   const other=team==='wij'?'zij':'wij';
   if(type==='nat'){
     // Bewaar ingevoerde roem — die mag niet verloren gaan bij NAT
@@ -1021,28 +1103,61 @@ function applySpecial(type,team){
     document.getElementById('input-roem-wij').value=roemWij;
     document.getElementById('input-roem-zij').value=roemZij;
     document.getElementById('input-wij').dataset.special='NAT '+(team==='wij'?'WIJ':'ZIJ');
+    document.getElementById('input-wij').dataset.specialTime=Date.now();
     document.getElementById('input-wij').dataset.natTeam=team;
     // FX direct afspelen (geen setTimeout = beter voor iOS geluid)
     showNatFX();
     showToast('💧 NAT '+(team==='wij'?'Wij':'Zij')+' — 0 punten');
     setTimeout(()=>submitRound(),400);
   } else if(type==='verz'){
-    ['input-wij','input-zij','input-roem-wij','input-roem-zij'].forEach(id=>document.getElementById(id).value='');
-    document.getElementById('input-'+team).value=0;
-    document.getElementById('input-'+other).value=162;
-    document.getElementById('input-roem-'+other).value=100;
-    document.getElementById('input-wij').dataset.special='VERZ '+(team==='wij'?'WIJ':'ZIJ');
-    showVerzFX();
-    showToast('🔵 VERZ '+(team==='wij'?'Wij':'Zij')+' — 100 roem straf');
-    setTimeout(()=>submitRound(),400);
+    // Legacy pad (directe team-keuze) — open picker, selectVerzPlayer handelt de rest af
+    openVerzPicker();
   } else if(type==='pit'){
     document.getElementById('input-'+team).value=162;
     document.getElementById('input-'+other).value=0;
     document.getElementById('input-roem-'+team).value=100;
     document.getElementById('input-wij').dataset.special='PIT '+(team==='wij'?'WIJ':'ZIJ');
+    document.getElementById('input-wij').dataset.specialTime=Date.now();
     showToast('💥 PIT '+(team==='wij'?'Wij':'Zij')+' — 162 + 100 roem');
     setTimeout(()=>{ showPitFX(); setTimeout(()=>submitRound(),800); },200);
   }
+}
+
+let _pendingVerzPlayerId=null; // ID van de speler die verzaakte (kan afwijken van maker)
+
+function openVerzPicker(){
+  const g=current;if(!g) return;
+  // Toon alle spelers — iedereen kan verzaken
+  const wijIds=[...g.wij,...(g.wijBench||[])];
+  const zijIds=[...g.zij,...(g.zijBench||[])];
+  document.getElementById('verz-picker-title').innerHTML=
+    `Wie heeft verzaakt? <span class="modal-close" onclick="closeModal('modal-verz-picker')">✕</span>`;
+  const btnHtml=[
+    `<div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:4px;letter-spacing:.5px">WIJ</div>`,
+    ...wijIds.map(id=>{const p=getPlayer(id);return `<button class="btn" style="width:100%;margin-bottom:8px" onclick="selectVerzPlayer(${id})">${p?.name||'?'}</button>`;}),
+    `<div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:4px;margin-top:4px;letter-spacing:.5px">ZIJ</div>`,
+    ...zijIds.map(id=>{const p=getPlayer(id);return `<button class="btn" style="width:100%;margin-bottom:8px" onclick="selectVerzPlayer(${id})">${p?.name||'?'}</button>`;})
+  ].join('');
+  document.getElementById('verz-picker-buttons').innerHTML=btnHtml;
+  openModal('modal-verz-picker');
+}
+function selectVerzPlayer(playerId){
+  closeModal('modal-verz-picker');
+  const g=current;if(!g) return;
+  _pendingVerzPlayerId=playerId;
+  // Team bepalen op basis van wie verzaakte (niet de maker)
+  const team=getTeamForPlayer(g,playerId)||'wij';
+  const other=team==='wij'?'zij':'wij';
+  ['input-wij','input-zij','input-roem-wij','input-roem-zij'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('input-'+team).value=0;
+  document.getElementById('input-'+other).value=162;
+  document.getElementById('input-roem-'+other).value=100;
+  const inputWij=document.getElementById('input-wij');
+  inputWij.dataset.special='VERZ '+(team==='wij'?'WIJ':'ZIJ');
+  inputWij.dataset.specialTime=Date.now();
+  showVerzFX();
+  showToast('🔵 VERZ '+(team==='wij'?'Wij':'Zij')+' — '+getPlayer(playerId)?.name+' verzaakte');
+  setTimeout(()=>submitRound(),350);
 }
 
 // ══════════════════════════════════════════
@@ -1059,6 +1174,7 @@ function isValidRoem(val){
 }
 
 function submitRound(){
+  if(_blockSubmit) return;
   const g=current;if(!g) return;
   if(g.rounds.length>=16){showToast('Maximaal 16 blaadjes bereikt',true);return}
 
@@ -1071,7 +1187,9 @@ function submitRound(){
   if(!isValidRoem(rw)) return showToast('Roem Wij klopt niet — gebruik veelvouden van 20, 50 of 100',true);
   if(!isValidRoem(rz)) return showToast('Roem Zij klopt niet — gebruik veelvouden van 20, 50 of 100',true);
 
-  const special=document.getElementById('input-wij').dataset.special||'';
+  const inputWijEl=document.getElementById('input-wij');
+  const specialAge=Date.now()-parseInt(inputWijEl.dataset.specialTime||'0');
+  const special=specialAge<5000?(inputWijEl.dataset.special||''):'';
   delete document.getElementById('input-wij').dataset.special;
   delete document.getElementById('input-wij').dataset.natTeam;
 
@@ -1089,7 +1207,9 @@ function submitRound(){
 
   // Determine who made it and if nat auto-detected
   const uitId=getUitbeurt(g.rounds.length);
-  const rondeData={w:fw,z:fz,rw,rz,special:'',spelId,spelWij,spelZij,uitId};
+  const verzPlayerId=special.includes('VERZ')&&_pendingVerzPlayerId?_pendingVerzPlayerId:null;
+  _pendingVerzPlayerId=null;
+  const rondeData={w:fw,z:fz,rw,rz,special:'',spelId,spelWij,spelZij,uitId,verzPlayerId};
   rondeData.special=special||getAutoNatSpecial(g,rondeData);
   const autoNat=rondeData.special.includes('(auto)')?rondeData.special:'';
   if(autoNat) showNatFX();
@@ -1114,12 +1234,38 @@ function submitRound(){
     setTimeout(()=>confirmEndGame(),700);
   } else {
     showToast('✓ Blaadje '+(g.rounds.length)+' verwerkt');
+    checkJagen(g);
     renderGame();
     // Wisselherinnering na elk takkie (4, 8, 12 blaadjes)
     const hasBench=((g.wijBench||[]).length+(g.zijBench||[]).length)>0;
     if(hasBench && g.rounds.length%4===0 && g.rounds.length<16){
       const takkieNum=g.rounds.length/4;
       setTimeout(()=>showWisselReminder(takkieNum),600);
+    }
+  }
+}
+
+function checkJagen(g){
+  if(g.rounds.length<3) return;
+  function aansluitendVerlies(team){
+    let n=0;
+    for(let i=g.rounds.length-1;i>=0;i--){
+      const r=g.rounds[i];
+      const mijn=team==='wij'?r.w+r.rw:r.z+r.rz;
+      const ander=team==='wij'?r.z+r.rz:r.w+r.rw;
+      if(mijn<ander) n++; else break;
+    }
+    return n;
+  }
+  for(const team of ['wij','zij']){
+    const n=aansluitendVerlies(team);
+    if(n>0&&n%3===0){
+      const ids=team==='wij'?[...g.wij,...(g.wijBench||[])]:[...g.zij,...(g.zijBench||[])];
+      const namen=ids.map(id=>getPlayer(id)?.name).filter(Boolean);
+      const namenStr=namen.length===2?namen.join(' & '):namen.join(', ');
+      playAudioFile('/sounds/jagen.mp3');
+      setTimeout(()=>showJagenToast('🏹 '+namenStr+' zitten er niet lekker in. Tijd om te jagen!'),600);
+      return;
     }
   }
 }
@@ -1364,7 +1510,6 @@ function endGame(){
   // Maker stats will also be recalculated by recalcPlayerStats().
 
   g.completed=completed;
-  const startFresh=g.rounds.length>=16;
   // Game zit al in de games-array (actieve games worden daar bijgehouden)
   // Voeg toe aan actief toernooi indien aanwezig
   const activeTournament=tournaments.find(t=>t.active);
@@ -1377,7 +1522,6 @@ function endGame(){
   closeModal('modal-end-game');
   showToast('🏁 Boom opgeslagen!');
   switchView('home');
-  if(startFresh) setTimeout(()=>openNewGameModal(),250);
 }
 
 // ══════════════════════════════════════════
@@ -1449,45 +1593,88 @@ function openGameDetail(id){
   const g=games.find(x=>String(x.id)===String(id));if(!g) return;
   const wn=g.wij.map(id=>getPlayer(id)?.name||'?').join(' & ');
   const zn=g.zij.map(id=>getPlayer(id)?.name||'?').join(' & ');
-  const d=new Date(g.date).toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  let cw=0,cz=0;
-  const rows=g.rounds.map((r,i)=>{
-    const rndPtsW=r.w, rndPtsZ=r.z;
-    cw+=r.w+r.rw;cz+=r.z+r.rz;
-    const sp=r.special||'';
+  const dateStr=new Date(g.date).toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const fw=typeof g.finalWij==='number'?g.finalWij:g.scoreWij;
+  const fz=typeof g.finalZij==='number'?g.finalZij:g.scoreZij;
+
+  function scoreCell(pts,rSp,team){
+    const N=`<b style="color:#e74c3c">N</b>`;
+    const V=`<b style="color:#3498db">V</b>`;
+    const P=`<b style="color:#9b59b6">P</b>`;
+    if(rSp.includes('NAT '+team))  return `${N} 0`;
+    if(rSp.includes('VERZ '+team)) return `${V} 0`;
+    if(rSp.includes('PIT '+team))  return `${P} ${pts}`;
+    return `${pts}`;
+  }
+
+  let rows='';
+  let cumW=0,cumZ=0,cumRW=0,cumRZ=0;
+  g.rounds.forEach((r,i)=>{
+    const rSp=r.special||'';
+    let pw=r.w,pz=r.z;
+    if(rSp.includes('NAT WIJ')||rSp.includes('VERZ WIJ')){pw=0;pz=162;}
+    else if(rSp.includes('NAT ZIJ')||rSp.includes('VERZ ZIJ')){pw=162;pz=0;}
+    let dispRW=r.rw||0,dispRZ=r.rz||0;
+    if(rSp.includes('NAT WIJ')||rSp.includes('VERZ WIJ')){dispRZ=(r.rw||0)+(r.rz||0);dispRW=0;}
+    else if(rSp.includes('NAT ZIJ')||rSp.includes('VERZ ZIJ')){dispRW=(r.rw||0)+(r.rz||0);dispRZ=0;}
+    cumW+=pw;cumZ+=pz;cumRW+=dispRW;cumRZ+=dispRZ;
     const rondeSpelerId=r.spelId||r.spelWij||r.spelZij;
-    const spelNaam=rondeSpelerId?getPlayer(+rondeSpelerId)?.name||'?':'—';
-    return `<tr>
-      <td style="color:rgba(245,240,232,.4)">${i+1}</td>
-      <td style="font-size:10px;color:rgba(245,240,232,.4)">${spelNaam}</td>
-      <td><b>${rndPtsW}</b></td>
-      <td style="color:rgba(201,168,76,.7);font-size:10px">${r.rw||'—'}</td>
-      <td><b>${rndPtsZ}</b></td>
-      <td style="color:rgba(201,168,76,.7);font-size:10px">${r.rz||'—'}</td>
-      <td style="font-size:9px;color:rgba(245,240,232,.4)">${sp.replace(' WIJ','').replace(' ZIJ','')}</td>
+    const spelNaam=rondeSpelerId?getPlayer(+rondeSpelerId)?.name?.split(' ')[0]:'';
+    const uitNaam=r.uitId?getPlayer(+r.uitId)?.name?.split(' ')[0]:'';
+    const wasGekaapt=r.uitId&&String(r.uitId)!==String(rondeSpelerId);
+    const rondeLabel=wasGekaapt
+      ?`<div style="font-size:9px;color:rgba(245,240,232,.4)">${uitNaam} <span style="opacity:.5">uitb.</span></div>
+        <div style="font-size:9px;color:rgba(245,240,232,.7)">↳ ${spelNaam} <span style="opacity:.5">speelde</span></div>`
+      :`<div style="font-size:9px;color:rgba(245,240,232,.5)">${spelNaam}</div>`;
+    rows+=`<tr>
+      <td style="text-align:right;color:rgba(201,168,76,.65);font-size:11px;min-width:28px">${dispRW||'—'}</td>
+      <td style="text-align:right;font-size:14px;font-weight:700;padding-right:6px">${scoreCell(pw,rSp,'WIJ')}</td>
+      <td style="text-align:center;font-size:11px;color:rgba(245,240,232,.45);line-height:1.5;padding:5px 2px">
+        <b style="color:rgba(245,240,232,.65)">${i+1}.</b>
+        ${rondeLabel}
+      </td>
+      <td style="text-align:left;font-size:14px;font-weight:700;padding-left:6px">${scoreCell(pz,rSp,'ZIJ')}</td>
+      <td style="text-align:left;color:rgba(201,168,76,.65);font-size:11px;min-width:28px">${dispRZ||'—'}</td>
     </tr>`;
-  }).join('');
+    if((i+1)%4===0&&i<g.rounds.length-1){
+      const takkieNum=(i+1)/4;
+      rows+=`<tr style="background:rgba(201,168,76,.07)">
+        <td style="text-align:right;font-size:10px;color:rgba(201,168,76,.55);padding:5px 3px">${cumRW||''}</td>
+        <td style="text-align:right;font-weight:700;color:var(--gold);font-size:13px;padding-right:6px">${cumW}</td>
+        <td style="text-align:center;font-size:9px;color:rgba(201,168,76,.6);letter-spacing:.8px;padding:5px 2px">TAKKIE ${takkieNum}</td>
+        <td style="text-align:left;font-weight:700;color:var(--gold);font-size:13px;padding-left:6px">${cumZ}</td>
+        <td style="text-align:left;font-size:10px;color:rgba(201,168,76,.55);padding:5px 3px">${cumRZ||''}</td>
+      </tr>`;
+    }
+  });
+
   document.getElementById('modal-game-detail-content').innerHTML=`
     <div class="modal-title">Spel details <span class="modal-close" onclick="closeModal('modal-game-detail')">✕</span></div>
     <div style="text-align:center;margin-bottom:16px">
-      <div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:6px">${d}</div>
+      <div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:6px">${dateStr}</div>
       <div style="font-size:12px;color:rgba(245,240,232,.6)">${wn}</div>
       <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin:6px 0">
-        <div style="font-family:'Playfair Display',serif;font-size:40px;font-weight:900;color:var(--gold)">${g.finalWij}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:40px;font-weight:900;color:${fw>fz?'var(--win)':'var(--gold)'}">${fw}</div>
         <div style="color:rgba(245,240,232,.25)">–</div>
-        <div style="font-family:'Playfair Display',serif;font-size:40px;font-weight:900;color:var(--gold)">${g.finalZij}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:40px;font-weight:900;color:${fz>fw?'var(--win)':'var(--gold)'}">${fz}</div>
       </div>
       <div style="font-size:12px;color:rgba(245,240,232,.6)">${zn}</div>
       <div style="font-size:11px;color:rgba(245,240,232,.35);margin-top:6px">${g.rounds.length} blaadjes · Roem: ${g.roemWij||0} – ${g.roemZij||0} · ${g.completed?'🌳 Volledige boom':'🌿 Onvolledig'}</div>
     </div>
-    <div class="card-label" style="margin-bottom:8px">Ronde voor ronde</div>
-    <div style="overflow-x:auto">
-      <table class="round-table">
-        <thead><tr><th>#</th><th>Speler</th><th>Pnt W</th><th>R W</th><th>Pnt Z</th><th>R Z</th><th>Bijz.</th></tr></thead>
-        <tbody>${rows}</tbody>
-        <tfoot><tr class="totaal-row"><td colspan="2">TOTAAL</td><td>${g.finalWij}</td><td style="color:rgba(201,168,76,.7);font-size:10px">${g.roemWij}</td><td>${g.finalZij}</td><td style="color:rgba(201,168,76,.7);font-size:10px">${g.roemZij}</td><td></td></tr></tfoot>
-      </table>
-    </div>`;
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <span style="font-size:11px;color:rgba(245,240,232,.5);font-weight:600;letter-spacing:.8px">${wn.toUpperCase()}</span>
+      <span style="font-size:11px;color:rgba(245,240,232,.5);font-weight:600;letter-spacing:.8px">${zn.toUpperCase()}</span>
+    </div>
+    <table class="round-table" style="width:100%">
+      <tbody>${rows}</tbody>
+      <tfoot><tr class="totaal-row">
+        <td style="text-align:right;font-size:11px">${g.roemWij||0}</td>
+        <td style="text-align:right">${fw}</td>
+        <td style="text-align:center;font-size:10px;letter-spacing:.8px">TOTAAL</td>
+        <td style="text-align:left">${fz}</td>
+        <td style="text-align:left;font-size:11px">${g.roemZij||0}</td>
+      </tr></tfoot>
+    </table>`;
   openModal('modal-game-detail');
 }
 
@@ -1537,7 +1724,7 @@ function renderAlgemeenStats(){
         <div class="stat-box"><div class="stat-value">${totGames}</div><div class="stat-label">🌳 Bomen</div></div>
         <div class="stat-box"><div class="stat-value">${completedBomen}</div><div class="stat-label">✅ Volledig</div></div>
         <div class="stat-box"><div class="stat-value">${totRondes}</div><div class="stat-label">🔄 Rondes</div></div>
-        <div class="stat-box"><div class="stat-value">${Math.round(totRondes/(totGames||1))}</div><div class="stat-label">Gem. rondes</div></div>
+        <div class="stat-box"><div class="stat-value">${Math.round(totRondes/(totGames||1))}</div><div class="stat-label">Gem. blaadjes</div></div>
       </div>
     </div>
     <div class="card">
@@ -1546,7 +1733,6 @@ function renderAlgemeenStats(){
         <div class="stat-box"><div class="stat-value" style="color:#e74c3c">${allNat}</div><div class="stat-label">💧 Nat</div></div>
         <div class="stat-box"><div class="stat-value" style="color:#3498db">${allVerz}</div><div class="stat-label">🔵 Verzaakt</div></div>
         <div class="stat-box"><div class="stat-value" style="color:#9b59b6">${allPit}</div><div class="stat-label">💥 Pit</div></div>
-        <div class="stat-box"><div class="stat-value">${(()=>{let tp=0,tr=0;games.forEach(g=>{if(g.rounds.length){tp+=(g.scoreWij||0)+(g.scoreZij||0);tr+=g.rounds.length;}});return tr?Math.round(tp/tr):0;})()}</div><div class="stat-label">Gem. pnt/blaadje</div></div>
       </div>
     </div>
     <div class="card">
@@ -1580,7 +1766,7 @@ function renderDuoStats(){
       if(team.length<2) return;
       const key=getDuoKey(team[0],team[1]);
       if(!duos[key]) duos[key]={key,p1:team[0],p2:team[1],games:0,wins:0,losses:0,draws:0,nat:0,verz:0,pit:0,
-        natByP1:0,natByP2:0,pitByP1:0,pitByP2:0,verzByP1:0,verzByP2:0,completedBomen:0};
+        natByP1:0,natByP2:0,natUnknown:0,pitByP1:0,pitByP2:0,pitUnknown:0,verzByP1:0,verzByP2:0,verzUnknown:0,completedBomen:0};
       const d=duos[key];
       d.games++;
       const isWij=ti===0;
@@ -1594,36 +1780,48 @@ function renderDuoStats(){
         const teamTag=isWij?'WIJ':'ZIJ';
         if(sp.includes('NAT '+teamTag)){
           d.nat++;
-          if(r.spelWij&&isWij){const m=+r.spelWij;if(m===team[0]) d.natByP1++; else if(m===team[1]) d.natByP2++;}
-          if(r.spelZij&&!isWij){const m=+r.spelZij;if(m===team[0]) d.natByP1++; else if(m===team[1]) d.natByP2++;}
+          // Maker: spelWij/spelZij > spelId (fallback oude data) > uitId
+          let natMaker=isWij?+r.spelWij:+r.spelZij;
+          if(!natMaker) natMaker=+r.spelId||0;
+          if(!natMaker&&r.uitId&&team.includes(+r.uitId)) natMaker=+r.uitId;
+          if(natMaker===team[0]) d.natByP1++;
+          else if(natMaker===team[1]) d.natByP2++;
+          else d.natUnknown++;
         }
-        if(sp.includes('VERZ '+teamTag)) d.verz++;
+        if(sp.includes('VERZ '+teamTag)){
+          d.verz++;
+          // verzPlayerId > spelWij/spelZij (team-specifiek) > spelId (oude data zonder spelWij)
+          const vId=r.verzPlayerId||(isWij?r.spelWij:r.spelZij)||r.spelId;
+          const vm=+vId;
+          if(vm===team[0]) d.verzByP1++;
+          else if(vm===team[1]) d.verzByP2++;
+          else d.verzUnknown++;
+        }
         if(sp.includes('PIT '+teamTag)){
           d.pit++;
-          if(r.spelWij&&isWij){const m=+r.spelWij;if(m===team[0]) d.pitByP1++; else if(m===team[1]) d.pitByP2++;}
-          if(r.spelZij&&!isWij){const m=+r.spelZij;if(m===team[0]) d.pitByP1++; else if(m===team[1]) d.pitByP2++;}
+          const pitMaker=isWij?+r.spelWij:+r.spelZij;
+          if(pitMaker===team[0]) d.pitByP1++;
+          else if(pitMaker===team[1]) d.pitByP2++;
+          else d.pitUnknown++;
         }
       });
     });
   });
 
-  const entries=Object.values(duos).sort((a,b)=>b.games-a.games);
+  const entries=Object.values(duos).sort((a,b)=>{
+    const wrA=a.games?a.wins/a.games:0;
+    const wrB=b.games?b.wins/b.games:0;
+    return wrB-wrA||b.games-a.games;
+  });
   if(!entries.length) return `<div class="empty"><div class="empty-icon">👫</div><div class="empty-text">Nog geen duo-data</div></div>`;
 
   if(duoStatsFilter!=='all' && !entries.find(d=>d.key===duoStatsFilter)) duoStatsFilter='all';
-  const options=['<option value="all">Alle duo\'s</option>'].concat(entries.map(d=>{
-    const p1=getPlayer(d.p1), p2=getPlayer(d.p2);
-    return `<option value="${d.key}">${p1?.name||'?'} & ${p2?.name||'?'}</option>`;
-  })).join('');
-  const filtered=duoStatsFilter==='all'?entries:entries.filter(d=>d.key===duoStatsFilter);
-
-  const cards=filtered.map(d=>{
+  const cards=entries.map(d=>{
     const p1=getPlayer(d.p1),p2=getPlayer(d.p2);
     if(!p1||!p2) return '';
     const wr=d.games?Math.round(d.wins/d.games*100):0;
-    const natPct=d.games?Math.round(d.nat/d.games*100):0;
-    const pitPct=d.games?Math.round(d.pit/d.games*100):0;
-    const verzPct=d.games?Math.round(d.verz/d.games*100):0;
+    const natAvg=d.games?(d.nat/d.games).toFixed(1):0;
+    const verzAvg=d.games?(d.verz/d.games).toFixed(1):0;
     return `<div class="duo-card">
       <div class="duo-header">
         <div style="display:flex;gap:-6px">
@@ -1648,22 +1846,21 @@ function renderDuoStats(){
       </div>
       <div class="stat-grid">
         <div class="stat-box">
-          <div class="stat-value" style="color:#e74c3c">${d.nat}</div><div class="stat-label">💧 Keer nat (${natPct}%)</div>
-          ${d.nat>0?`<div style="font-size:10px;color:rgba(245,240,232,.4);margin-top:4px">${p1.name}: ${d.natByP1}× · ${p2.name}: ${d.natByP2}×</div>`:''}
+          <div class="stat-value" style="color:#e74c3c">${d.nat}</div><div class="stat-label">💧 Keer nat</div>
+          ${d.nat>0?`<div style="font-size:10px;color:rgba(245,240,232,.4);margin-top:4px">${p1.name}: ${d.natByP1}× · ${p2.name}: ${d.natByP2}×${d.natUnknown?` · ?: ${d.natUnknown}×`:''}</div>`:''}
         </div>
         <div class="stat-box">
-          <div class="stat-value" style="color:#9b59b6">${d.pit}</div><div class="stat-label">💥 Pit (${pitPct}%)</div>
-          ${d.pit>0?`<div style="font-size:10px;color:rgba(245,240,232,.4);margin-top:4px">${p1.name}: ${d.pitByP1}× · ${p2.name}: ${d.pitByP2}×</div>`:''}
+          <div class="stat-value" style="color:#9b59b6">${d.pit}</div><div class="stat-label">💥 Pit</div>
         </div>
-        <div class="stat-box"><div class="stat-value" style="color:#3498db">${d.verz}</div><div class="stat-label">🔵 Verzaakt (${verzPct}%)</div></div>
+        <div class="stat-box">
+          <div class="stat-value" style="color:#3498db">${d.verz}</div><div class="stat-label">🔵 Verzaakt</div>
+          ${d.verz>0?`<div style="font-size:10px;color:rgba(245,240,232,.4);margin-top:4px">${p1.name}: ${d.verzByP1}× · ${p2.name}: ${d.verzByP2}×${d.verzUnknown?` · ?: ${d.verzUnknown}×`:''}</div>`:''}
+        </div>
       </div>
     </div>`;
   }).join('');
 
-  return `<div class="card" style="margin-bottom:10px">
-    <div class="card-label">Filter duo's</div>
-    <select onchange="duoStatsFilter=this.value;renderStatsContent()" style="margin-bottom:0">${options.replace(`value="${duoStatsFilter}"`,`value="${duoStatsFilter}" selected`)}</select>
-  </div>${cards}`;
+  return cards;
 }
 
 function renderTegStats(){
@@ -1703,53 +1900,16 @@ function renderRecordsStats(){
   const active=players.filter(p=>p.games>0);
   if(!active.length) return `<div class="empty"><div class="empty-icon">🏆</div><div class="empty-text">Nog geen records</div></div>`;
 
-  // Avatar helper for record rows
   function av(p){
     if(!p) return '';
     const img=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`<span style="font-size:13px;font-weight:700">${p.name[0].toUpperCase()}</span>`;
     return `<div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--green-light));display:flex;align-items:center;justify-content:center;color:var(--green);flex-shrink:0;overflow:hidden;border:2px solid rgba(201,168,76,.4)">${img}</div>`;
   }
-
-  // Compute longest win/loss streaks across all games
-  function longestStreak(pid, type){
-    const form=getPlayerForm(pid);
-    let max=0,cur=0;
+  function longestStreak(pid,type){
+    const form=getPlayerForm(pid);let max=0,cur=0;
     form.results.forEach(r=>{if(r===type){cur++;if(cur>max)max=cur;}else cur=0;});
     return max;
   }
-
-  // Per-game stats
-  let highestRoem={pid:null,val:0},lowestScore={pid:null,val:Infinity};
-  games.filter(g=>!g.active&&g.completed).forEach(g=>{
-    const totalRoem=(g.roemWij||0)+(g.roemZij||0);
-    if(totalRoem>highestRoem.val){
-      // Find who won and attribute to all players in the winning team
-      highestRoem={pid:g.wij[0],val:totalRoem};
-    }
-    [[...g.wij,...(g.wijBench||[])],g.finalWij||g.scoreWij],[[...g.zij,...(g.zijBench||[])],g.finalZij||g.scoreZij];
-    const minScore=Math.min(g.finalWij||g.scoreWij,g.finalZij||g.scoreZij);
-    if(minScore<lowestScore.val){
-      const losers=(g.finalWij||g.scoreWij)<=(g.finalZij||g.scoreZij)?g.wij:g.zij;
-      lowestScore={pid:losers[0],val:minScore};
-    }
-  });
-
-  const byWins=[...active].sort((a,b)=>b.wins-a.wins);
-  const byHighScore=[...active].sort((a,b)=>b.highScore-a.highScore);
-  const byGames=[...active].sort((a,b)=>b.games-a.games);
-  const byWr=active.filter(p=>p.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games));
-  const byNat=[...active].sort((a,b)=>b.nat-a.nat);
-  const byPit=[...active].sort((a,b)=>(b.pit||0)-(a.pit||0));
-  const byKaap=[...active].sort((a,b)=>(b.roundsKaap||0)-(a.roundsKaap||0));
-
-  // Longest win streak
-  const byWinStreak=[...active].map(p=>({p,s:longestStreak(p.id,'W')})).sort((a,b)=>b.s-a.s);
-  const byLossStreak=[...active].map(p=>({p,s:longestStreak(p.id,'V')})).sort((a,b)=>b.s-a.s);
-
-  // Current trends
-  const onFire=active.filter(p=>{const f=getPlayerForm(p.id);return f.streak>=3&&f.streakType==='W';}).sort((a,b)=>{const fa=getPlayerForm(a.id),fb=getPlayerForm(b.id);return fb.streak-fa.streak;});
-  const koud=active.filter(p=>{const f=getPlayerForm(p.id);return f.streak>=3&&f.streakType==='V';}).sort((a,b)=>{const fa=getPlayerForm(a.id),fb=getPlayerForm(b.id);return fb.streak-fa.streak;});
-
   function row(icon,label,p,val,extra=''){
     if(!p) return '';
     return `<div class="stat-row">
@@ -1763,6 +1923,61 @@ function renderRecordsStats(){
       <div style="font-weight:700;color:var(--gold);text-align:right">${val}</div>
     </div>`;
   }
+
+  // Grootste comeback: max achterstand op enig moment in gewonnen spel
+  let biggestComeback={pid:null,val:0};
+  // Laagste eindscore
+  let lowestScore={pid:null,val:Infinity};
+  // Vaakst overwinning verspeeld (voorstond halverwege maar verloor)
+  const verspeeld={};
+  games.filter(g=>!g.active&&g.rounds.length>=2).forEach(g=>{
+    const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
+    const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
+    if(fw===fz) return;
+    const wijWon=fw>fz;
+    // Laagste score
+    const loser=wijWon?fz:fw;
+    if(loser<lowestScore.val){
+      lowestScore={pid:(wijWon?g.zij:g.wij)[0],val:loser};
+    }
+    // Grootste comeback
+    let wR=0,zR=0,maxDeficit=0;
+    g.rounds.forEach(r=>{
+      wR+=r.w+r.rw; zR+=r.z+r.rz;
+      const deficit=wijWon?zR-wR:wR-zR;
+      if(deficit>maxDeficit) maxDeficit=deficit;
+    });
+    if(maxDeficit>biggestComeback.val){
+      biggestComeback={pid:(wijWon?g.wij:g.zij)[0],val:maxDeficit};
+    }
+    // Overwinning verspeeld: alleen tellen als er exact >=8 blaadjes zijn gespeeld
+    // en het team na 2 takkies (8 blaadjes) voor stond maar uiteindelijk verloor
+    if(g.rounds.length>=8){
+      let wH=0,zH=0;
+      g.rounds.slice(0,8).forEach(r=>{wH+=r.w+r.rw;zH+=r.z+r.rz;});
+      if(wH>zH&&!wijWon){
+        [...g.wij,...(g.wijBench||[])].forEach(pid=>{verspeeld[pid]=(verspeeld[pid]||0)+1;});
+      } else if(zH>wH&&wijWon){
+        [...g.zij,...(g.zijBench||[])].forEach(pid=>{verspeeld[pid]=(verspeeld[pid]||0)+1;});
+      }
+    }
+  });
+
+  const byVerspeeld=[...active].filter(p=>verspeeld[p.id]>0).sort((a,b)=>(verspeeld[b.id]||0)-(verspeeld[a.id]||0));
+
+  const byWins=[...active].sort((a,b)=>b.wins-a.wins);
+  const byHighScore=[...active].sort((a,b)=>b.highScore-a.highScore);
+  const byGames=[...active].sort((a,b)=>b.games-a.games);
+  const byWr=active.filter(p=>p.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games));
+  const byNat=[...active].sort((a,b)=>b.nat-a.nat);
+  const byVerz=[...active].sort((a,b)=>(b.verz||0)-(a.verz||0));
+  const byPit=[...active].sort((a,b)=>(b.pit||0)-(a.pit||0));
+  const byLosses=[...active].sort((a,b)=>b.losses-a.losses);
+  const byKaap=[...active].sort((a,b)=>(b.roundsKaap||0)-(a.roundsKaap||0));
+  const byWinStreak=[...active].map(p=>({p,s:longestStreak(p.id,'W')})).sort((a,b)=>b.s-a.s);
+  const byLossStreak=[...active].map(p=>({p,s:longestStreak(p.id,'V')})).sort((a,b)=>b.s-a.s);
+  const onFire=active.filter(p=>{const f=getPlayerForm(p.id);return f.streak>=3&&f.streakType==='W';}).sort((a,b)=>getPlayerForm(b.id).streak-getPlayerForm(a.id).streak);
+  const koud=active.filter(p=>{const f=getPlayerForm(p.id);return f.streak>=3&&f.streakType==='V';}).sort((a,b)=>getPlayerForm(b.id).streak-getPlayerForm(a.id).streak);
 
   const trendsHTML=(onFire.length||koud.length)?`
     <div class="card">
@@ -1780,14 +1995,70 @@ function renderRecordsStats(){
       ${row('🎮','Meest actief',byGames[0],byGames[0]?.games+' bomen gespeeld')}
       ${row('🔥','Langste winststreek ooit',byWinStreak[0]?.p,byWinStreak[0]?.s+'× op rij')}
       ${row('💥','Meeste pits',byPit[0],(byPit[0]?.pit||0)+'× pit')}
-      ${row('🦅','Meest gekaapt',byKaap[0],(byKaap[0]?.roundsKaap||0)+'× uitbeurt gepakt')}
+      ${row('🦅','Vaakst gekaapt',byKaap[0],(byKaap[0]?.roundsKaap||0)+'× andermans beurt gepakt')}
+      ${biggestComeback.pid?row('📈','Grootste comeback',getPlayer(biggestComeback.pid),'+'+biggestComeback.val+' punten achterstand omgebogen'):''}
     </div>
     <div class="card">
       <div class="card-label">😅 Twijfelachtige records</div>
       ${row('💧','Vaakst nat',byNat[0],byNat[0]?.nat+'× nat')}
+      ${row('🔵','Vaakst verzaakt',byVerz[0],(byVerz[0]?.verz||0)+'× verzaakt')}
+      ${row('💀','Meeste verliespartijen',byLosses[0],byLosses[0]?.losses+'× verloren')}
       ${row('😰','Langste verliesreeks ooit',byLossStreak[0]?.p,byLossStreak[0]?.s+'× op rij verloren')}
-      ${lowestScore.pid?row('📉','Laagste score ooit',getPlayer(lowestScore.pid),lowestScore.val+' punten'):''}
-    </div>`;
+      ${byVerspeeld[0]?row('😬','Vaakst overwinning verspeeld',byVerspeeld[0],(verspeeld[byVerspeeld[0].id]||0)+'× voorgestaan maar toch verloren'):''}
+      ${lowestScore.pid?row('📉','Laagste eindscore',getPlayer(lowestScore.pid),lowestScore.val+' punten'):''}
+    </div>
+    ${(()=>{
+      // Duo records
+      const duoMap={};
+      games.filter(g=>!g.active&&g.wij.length>=2&&g.zij.length>=2).forEach(g=>{
+        [[g.wij,true],[g.zij,false]].forEach(([team,isWij])=>{
+          const key=getDuoKey(team[0],team[1]);
+          if(!duoMap[key]) duoMap[key]={p1:team[0],p2:team[1],games:0,wins:0,nat:0,verz:0};
+          const d=duoMap[key]; d.games++;
+          const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
+          const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
+          if(isWij?fw>fz:fz>fw) d.wins++;
+          g.rounds.forEach(r=>{
+            if(!r.special) return;
+            const tag=isWij?'WIJ':'ZIJ';
+            if(r.special.includes('NAT '+tag)) d.nat++;
+            if(r.special.includes('VERZ '+tag)) d.verz++;
+          });
+        });
+      });
+      const duos=Object.values(duoMap).filter(d=>d.games>0);
+      if(!duos.length) return '';
+      function drow(icon,label,d,val){
+        if(!d) return '';
+        const p1=getPlayer(d.p1),p2=getPlayer(d.p2);
+        if(!p1||!p2) return '';
+        const imgs=[p1,p2].map(p=>{
+          const img=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`<span style="font-size:11px;font-weight:700">${p.name[0]}</span>`;
+          return `<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--green-light));display:flex;align-items:center;justify-content:center;color:var(--green);overflow:hidden;border:2px solid rgba(201,168,76,.4)">${img}</div>`;
+        }).join('');
+        return `<div class="stat-row">
+          <div style="display:flex;align-items:center;gap:10px">
+            <div style="display:flex">${imgs}</div>
+            <div>
+              <div style="font-size:13px;font-weight:600">${icon} ${label}</div>
+              <div style="font-size:11px;color:rgba(245,240,232,.4)">${p1.name} & ${p2.name}</div>
+            </div>
+          </div>
+          <div style="font-weight:700;color:var(--gold);text-align:right">${val}</div>
+        </div>`;
+      }
+      const byWr=duos.filter(d=>d.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games));
+      const byGames=[...duos].sort((a,b)=>b.games-a.games);
+      const byNat=[...duos].sort((a,b)=>b.nat-a.nat);
+      const byVerz=[...duos].sort((a,b)=>b.verz-a.verz);
+      return `<div class="card">
+        <div class="card-label">🤝 Duo records</div>
+        ${drow('🏆','Beste duo',byWr[0]||byGames[0],byWr[0]?Math.round(byWr[0].wins/byWr[0].games*100)+'% winrate':(Math.round((byGames[0]?.wins||0)/(byGames[0]?.games||1)*100)+'% winrate'))}
+        ${drow('🎮','Meest samen gespeeld',byGames[0],byGames[0]?.games+' bomen')}
+        ${byNat[0]?.nat>0?drow('💧','Vaakst samen nat',byNat[0],byNat[0].nat+'× nat'):''}
+        ${byVerz[0]?.verz>0?drow('🔵','Vaakst samen verzaakt',byVerz[0],byVerz[0].verz+'× verzaakt'):''}
+      </div>`;
+    })()}`;
 }
 
 // ══════════════════════════════════════════
@@ -2019,6 +2290,7 @@ function deleteTournament(id){
 
 // Expose functions voor HTML onclick handlers
 Object.assign(window,{
+  _dbg:()=>games,
   switchView,
   showToast,
   openModal,
@@ -2059,6 +2331,9 @@ Object.assign(window,{
   recalcGameTotals,
   openLatestFinishedGameForEdit,
   applySpecial,
+  applySpecialAuto,
+  openVerzPicker,
+  selectVerzPlayer,
   submitRound,
   undoLastRound,
   renderRoundTable,

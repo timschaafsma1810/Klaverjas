@@ -193,6 +193,14 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
 #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
 #toast.error{background:rgba(231,76,60,.95)}
 
+/* JAGEN TOAST */
+#jagen-toast{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(.9);
+  background:rgba(22,61,36,.97);border:2px solid var(--gold);color:var(--cream);
+  padding:22px 28px;border-radius:20px;text-align:center;max-width:80vw;
+  font-weight:700;font-size:16px;line-height:1.45;opacity:0;pointer-events:none;
+  z-index:1000;transition:opacity .35s,transform .35s;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+#jagen-toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
+
 /* ANIMATIONS */
 @keyframes splash{0%{transform:scale(0) rotate(-20deg);opacity:0}50%{transform:scale(1.2);opacity:1}100%{transform:scale(1);opacity:1}}
 @keyframes droplets{0%{transform:translateY(0);opacity:1}100%{transform:translateY(60px);opacity:0}}
@@ -356,16 +364,9 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
   <div class="card">
     <div class="card-label">Speciale situaties</div>
     <div class="action-row">
-      <button class="action-btn nat" onclick="applySpecial(&#39;nat&#39;,&#39;wij&#39;)">💧 NAT Wij</button>
-      <button class="action-btn nat" onclick="applySpecial(&#39;nat&#39;,&#39;zij&#39;)">💧 NAT Zij</button>
-    </div>
-    <div class="action-row">
-      <button class="action-btn verz" onclick="applySpecial(&#39;verz&#39;,&#39;wij&#39;)">🔵 VERZ Wij</button>
-      <button class="action-btn verz" onclick="applySpecial(&#39;verz&#39;,&#39;zij&#39;)">🔵 VERZ Zij</button>
-    </div>
-    <div class="action-row">
-      <button class="action-btn pit" onclick="applySpecial(&#39;pit&#39;,&#39;wij&#39;)">💥 PIT Wij</button>
-      <button class="action-btn pit" onclick="applySpecial(&#39;pit&#39;,&#39;zij&#39;)">💥 PIT Zij</button>
+      <button class="action-btn nat" style="flex:1" onclick="applySpecialAuto('nat')">💧 NAT</button>
+      <button class="action-btn verz" style="flex:1" onclick="applySpecialAuto('verz')">🔵 VERZ</button>
+      <button class="action-btn pit" style="flex:1" onclick="applySpecialAuto('pit')">💥 PIT</button>
     </div>
   </div>
 
@@ -788,6 +789,15 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
   </div>
 </div>
 
+<div class="modal-overlay" id="modal-verz-picker">
+  <div class="modal">
+    <div class="modal-title" id="verz-picker-title">Wie heeft verzaakt? <span class="modal-close" onclick="closeModal('modal-verz-picker')">✕</span></div>
+    <p style="color:rgba(245,240,232,.6);font-size:13px;margin-bottom:14px">Selecteer de speler die verzaakte</p>
+    <div id="verz-picker-buttons"></div>
+    <button class="btn btn-ghost" style="margin-top:8px" onclick="closeModal('modal-verz-picker')">Annuleren</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-rook">
   <div class="modal rook-modal">
     <div style="font-size:70px;margin-bottom:10px">🚬</div>
@@ -819,6 +829,7 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
 <div class="fx-overlay" id="fx-overlay" style="display: none; background: rgba(52, 152, 219, 0.15);"></div>
 
 <div id="toast" class="">Spel verwijderd</div>
+<div id="jagen-toast"></div>
 
 <script src="https://www.youtube.com/iframe_api"></script>
 <script type="module" src="/src/main.js"></script>
