@@ -33,6 +33,9 @@ function checkAccessCode(){
 const _convexUrl = import.meta.env.VITE_CONVEX_URL;
 let _client;
 let _convexReady = false;
+let _localGamePending = null; // ID van lokaal aangemaakt spel nog niet bevestigd door Convex
+let _savePending = 0;         // Aantal saves in-flight — blokkeer onUpdate overschrijven
+let _pendingConvexData = null;// Gebufferde Convex update die wacht tot save klaar is
 
 if (!_convexUrl) {
   console.error('VITE_CONVEX_URL niet ingesteld! Maak een .env.local bestand aan.');
@@ -52,13 +55,30 @@ let tournaments=[];
 
 async function saveAll(){
   if(!_convexReady) return;
+  _savePending++;
+  let saveOk=false;
   try {
     await Promise.all([
       _client.mutation(_api.data.saveData,{key:'kj_players',value:JSON.stringify(players)}),
       _client.mutation(_api.data.saveData,{key:'kj_games',value:JSON.stringify(games)}),
       _client.mutation(_api.data.saveData,{key:'kj_tournaments',value:JSON.stringify(tournaments)}),
     ]);
-  } catch(e){ console.error('Opslaan mislukt:',e); }
+    saveOk=true;
+  } catch(e){ console.error('Opslaan mislukt:',e); showToast('⚠️ Opslaan mislukt, probeer opnieuw',true); }
+  finally{
+    _savePending--;
+    if(_savePending===0 && _pendingConvexData){
+      if(saveOk){
+        // Save geslaagd: pas gebufferde Convex update toe
+        const d=_pendingConvexData;
+        _pendingConvexData=null;
+        _applyConvexData(d);
+      } else {
+        // Save mislukt: gooi stale Convex data weg, behoud lokale state
+        _pendingConvexData=null;
+      }
+    }
+  }
 }
 
 // Recalculate per-player aggregated stats from all stored games.
@@ -78,8 +98,11 @@ function recalcPlayerStats(){
     const wijWon=finalWij>finalZij;
     const draw=finalWij===finalZij;
     function countSp(tag){return g.rounds.filter(r=>r.special&&r.special.includes(tag)).length;}
-    const allWijIds=[...g.wij,...(g.wijBench||[])];
-    const allZijIds=[...g.zij,...(g.zijBench||[])];
+    // Alleen bankspelers die daadwerkelijk zijn gewisseld tellen mee
+    const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
+    const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+    const allWijIds=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
+    const allZijIds=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
     [...allWijIds,...allZijIds].forEach(pid=>{
       const p=getPlayer(pid);if(!p) return;
       const isWij=allWijIds.includes(pid);
@@ -94,7 +117,8 @@ function recalcPlayerStats(){
       else{p.nat+=countSp('NAT ZIJ');p.verz+=countSp('VERZ ZIJ');p.pit+=countSp('PIT ZIJ');}
     });
     g.rounds.forEach(r=>{
-      const makerId=r.spelWij||r.spelZij;
+      // Gebruik spelId als primaire identifier (spelWij/spelZij als fallback voor legacy data)
+      const makerId=r.spelId||r.spelWij||r.spelZij;
       if(makerId){
         const pp=getPlayer(+makerId);
         if(pp){
@@ -111,7 +135,7 @@ function recalcPlayerStats(){
       }
       // Verz: gebruik verzPlayerId als beschikbaar (kan afwijken van de maker)
       if(r.special&&r.special.includes('VERZ')){
-        const vId=r.verzPlayerId||r.spelWij||r.spelZij;
+        const vId=r.verzPlayerId||r.spelWij||r.spelZij||r.spelId;
         if(vId){const vp=getPlayer(+vId);if(vp) vp.verzAsMaker++;}
       }
     });
@@ -176,6 +200,14 @@ function showJagenToast(msg){
   t.textContent=msg;
   t.classList.add('show');
   _jagenTimer=setTimeout(()=>t.classList.remove('show'),4000);
+}
+
+function formatDuration(ms){
+  if(!ms||ms<0) return null;
+  const mins=Math.floor(ms/60000);
+  if(mins<1) return '<1m';
+  if(mins<60) return mins+'m';
+  return Math.floor(mins/60)+'u '+(mins%60?mins%60+'m':'');
 }
 
 function showToast(msg,err=false){
@@ -449,12 +481,14 @@ function addPlayer(){
 function openAddPlayerModal(){openModal('modal-add-player')}
 
 function renderPlayers(){
+  recalcPlayerStats();
   const el=document.getElementById('players-list');
   if(!players.length){
     el.innerHTML=`<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">Nog geen spelers</div><div class="empty-sub">Voeg spelers toe om te beginnen</div></div>`;
     return;
   }
-  el.innerHTML=players.map(p=>{
+  const sorted=[...players].sort((a,b)=>((b.wins||0)/(b.games||1))-((a.wins||0)/(a.games||1)));
+  el.innerHTML=sorted.map(p=>{
     const wr=p.games?Math.round(p.wins/p.games*100):0;
     const badge=p.games===0?`<span class="neutral-badge">Nieuw</span>`:
       wr>=50?`<span class="win-badge">${wr}% gewonnen</span>`:`<span class="loss-badge">${wr}% gewonnen</span>`;
@@ -463,20 +497,21 @@ function renderPlayers(){
     const trend=trendBadge(form.streak,form.streakType);
     const formRow=form.last5.length?`<div style="display:flex;gap:3px;margin-top:5px">${formBadges(form.last5)}${trend?`<span style="margin-left:4px;font-size:11px;align-self:center">${trend}</span>`:''}</div>`:'';
     const flame=form.streak>=3&&form.streakType==='W'?' 🔥':'';
+    const ice=form.streak>=3&&form.streakType==='V'?' 🥶':'';
     return `<div class="player-tile" onclick="openProfile(${p.id})" style="padding:14px 16px">
       <div style="display:flex;align-items:flex-start;gap:14px">
         <div class="avatar" style="width:56px;height:56px;font-size:20px;flex-shrink:0">${avImg}</div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span class="player-name" style="font-size:16px">${p.name}${flame}</span>
+            <span class="player-name" style="font-size:16px">${p.name}${flame}${ice}</span>
             ${badge}
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:3px 10px;font-size:12px;color:rgba(245,240,232,.75);margin-bottom:8px">
             <span>🏆 ${p.wins}× gewonnen</span>
             <span>💀 ${p.losses}× verloren</span>
-            <span>💧 ${p.nat}× nat</span>
-            <span>🔵 ${p.verz||0}× verzaakt</span>
-            <span>💥 ${p.pit||0}× pit</span>
+            <span>💧 ${p.natAsMaker||0}× nat</span>
+            <span>🔵 ${p.verzAsMaker||0}× verzaakt</span>
+            <span>💥 ${p.pitAsMaker||0}× pit</span>
           </div>
           ${form.last5.length?`<div style="display:flex;gap:3px">${formBadges(form.last5)}</div>`:''}
         </div>
@@ -575,14 +610,12 @@ function openProfile(id){
 
     <div class="stat-grid" style="margin-bottom:10px">
       <div class="stat-box">
-        <div class="stat-value" style="color:#e74c3c">${p.nat}</div>
+        <div class="stat-value" style="color:#e74c3c">${p.natAsMaker||0}</div>
         <div class="stat-label">💧 Keer nat</div>
-        ${p.nat>0?`<div style="font-size:10px;color:rgba(245,240,232,.4);margin-top:3px">Zelf: ${p.natAsMaker||0}× · Mee: ${p.nat-(p.natAsMaker||0)}×</div>`:''}
       </div>
       <div class="stat-box">
-        <div class="stat-value" style="color:#3498db">${p.verz}</div>
+        <div class="stat-value" style="color:#3498db">${p.verzAsMaker||0}</div>
         <div class="stat-label">🔵 Keer verzaakt</div>
-        ${p.verz>0?`<div style="font-size:10px;color:rgba(245,240,232,.4);margin-top:3px">Zelf: ${p.verzAsMaker||0}× · Mee: ${p.verz-(p.verzAsMaker||0)}×</div>`:''}
       </div>
       <div class="stat-box"><div class="stat-value">${p.highScore}</div><div class="stat-label">⭐ Hoogste score</div></div>
     </div>
@@ -652,9 +685,9 @@ function updateBenchOptions(){
   const benchOpts=players
     .filter(p=>!activeIds.includes(String(p.id)))
     .map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
-  ['sel-wij3','sel-zij3','sel-wij4','sel-zij4'].forEach(sid=>{
-    const el=document.getElementById(sid);
-    if(!el) return;
+  const benchSection=document.getElementById('bench-section');
+  const benchSelects=benchSection?[...benchSection.querySelectorAll('select')]:[];
+  benchSelects.forEach(el=>{
     const prev=el.value;
     el.innerHTML=noneOpt+benchOpts;
     el.value=prev&&!activeIds.includes(prev)?prev:'';
@@ -676,6 +709,11 @@ function updateStarterOptions(){
 }
 
 function populateSelects(){
+  // Reset bench-sectie bij heropenen modal
+  const benchSection=document.getElementById('bench-section');
+  if(benchSection) benchSection.innerHTML='';
+  document.getElementById('btn-add-bench-wij')?.style.removeProperty('display');
+  document.getElementById('btn-add-bench-zij')?.style.removeProperty('display');
   const opts=players.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
   const seatDefaults={
     'sel-wij1':players[0]?.id,
@@ -683,16 +721,28 @@ function populateSelects(){
     'sel-wij2':players[2]?.id,
     'sel-zij2':players[3]?.id
   };
+  let starterManuallySet=false;
+  const starterSel=document.getElementById('sel-starter');
+
   ['sel-wij1','sel-zij1','sel-wij2','sel-zij2'].forEach(sid=>{
     const el=document.getElementById(sid);
     el.innerHTML=opts;
     if(seatDefaults[sid]!==undefined) el.value=seatDefaults[sid];
-    el.onchange=updateStarterOptions;
+    el.onchange=()=>{
+      updateStarterOptions();
+      // Speler 2 (sel-zij1) stuurt starter aan, tenzij gebruiker die al handmatig heeft gekozen
+      if(sid==='sel-zij1'&&!starterManuallySet){
+        if(starterSel) starterSel.value=el.value;
+      }
+    };
   });
+
+  // Zodra gebruiker starter handmatig aanpast: niet meer auto-volgen
+  if(starterSel) starterSel.onchange=()=>{ starterManuallySet=true; };
+
   updateStarterOptions();
-  // Default starter: Zij 1 (eerste na de dealer)
+  // Default starter = Speler 2 (sel-zij1)
   const zij1Val=document.getElementById('sel-zij1')?.value;
-  const starterSel=document.getElementById('sel-starter');
   if(zij1Val&&starterSel) starterSel.value=String(zij1Val);
 }
 
@@ -728,6 +778,7 @@ function startNewGame(){
   games.push(newGame);
   localStorage.setItem('kj_viewing_id',String(newGame.id));
   current=newGame;
+  _localGamePending=String(newGame.id);
   saveAll();closeModal('modal-new-game');switchView('game');showToast('Boom gestart! 🌳 Veel plezier');
 }
 
@@ -746,13 +797,30 @@ function resumeLastGame(){
   switchView('home');
 }
 
-function toggleBenchSection(){
+function addBenchSlot(team='wij'){
   const section=document.getElementById('bench-section');
-  const btn=document.getElementById('btn-toggle-bench');
   if(!section) return;
-  const isVisible=section.style.display!=='none';
-  section.style.display=isVisible?'none':'block';
-  if(btn) btn.textContent=isVisible?'+ Wisselspelers toevoegen':'− Wisselspelers verbergen';
+  const teamLabel=team==='wij'?'Wij':'Zij';
+  // Hoeveel slots zijn er al voor dit team?
+  const existing=section.querySelectorAll(`select[data-bench-team="${team}"]`).length;
+  if(existing>=2){showToast(`Max 2 bankspelers per team`,true);return;}
+  const slotNum=existing+1;
+  const slotId=`sel-${team}${2+slotNum}`; // sel-wij3/sel-wij4 of sel-zij3/sel-zij4
+  const noneOpt=`<option value="">— Geen wisselspeler —</option>`;
+  const activeIds=['sel-wij1','sel-zij1','sel-wij2','sel-zij2']
+    .map(id=>document.getElementById(id)?.value).filter(Boolean);
+  const opts=noneOpt+players.filter(p=>!activeIds.includes(String(p.id)))
+    .map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+  const lbl=document.createElement('label');
+  lbl.textContent=`Team "${teamLabel}" — Bankspeler ${slotNum}`;
+  const sel=document.createElement('select');
+  sel.id=slotId;
+  sel.dataset.benchTeam=team;
+  sel.innerHTML=opts;
+  section.appendChild(lbl);
+  section.appendChild(sel);
+  if(existing+1>=2) document.getElementById(`btn-add-bench-${team}`)?.style.setProperty('display','none');
+  updateBenchOptions();
 }
 
 function openWisselModal(){
@@ -761,22 +829,42 @@ function openWisselModal(){
   const hasZijBench=(g.zijBench||[]).length>0;
   if(!hasWijBench&&!hasZijBench) return showToast('Geen wisselspelers beschikbaar',true);
   let html='';
+  // Bepaal wie nog niet gewisseld is (niet eerder als "in" gekomen) → die staat als standaard
+  const wijInHistory=(g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean);
+  const zijInHistory=(g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean);
+  const defaultWijUit=g.wij.find(id=>!wijInHistory.includes(id))??g.wij[0];
+  const defaultZijUit=g.zij.find(id=>!zijInHistory.includes(id))??g.zij[0];
+
+  function opts(ids,defaultId){
+    return ids.map(id=>`<option value="${id}"${id===defaultId?' selected':''}>${getPlayer(id)?.name||'?'}</option>`).join('');
+  }
+  const bothHaveBench=hasWijBench&&hasZijBench;
   if(hasWijBench){
     html+=`<div style="margin-bottom:14px">
-      <div class="card-label">Team Wij — wissel</div>
-      <label style="font-size:12px;margin-top:6px">Wie gaat eruit?</label>
-      <select id="wissel-wij-uit">${g.wij.map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
-      <label style="font-size:12px;margin-top:6px">Wie komt erin?</label>
-      <select id="wissel-wij-in">${(g.wijBench||[]).map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
+      ${bothHaveBench?`<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:13px;font-weight:600">
+        <input type="checkbox" id="cb-wij-wisselt" checked style="width:16px;height:16px">
+        Team Wij wisselt ook
+      </label>`:`<div class="card-label">Team Wij — wissel</div>`}
+      <div id="wij-wissel-fields">
+        <label style="font-size:12px;margin-top:6px">Wie gaat eruit?</label>
+        <select id="wissel-wij-uit">${opts(g.wij,defaultWijUit)}</select>
+        <label style="font-size:12px;margin-top:6px">Wie komt erin?</label>
+        <select id="wissel-wij-in">${(g.wijBench||[]).map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
+      </div>
     </div>`;
   }
   if(hasZijBench){
     html+=`<div style="margin-bottom:14px">
-      <div class="card-label">Team Zij — wissel</div>
-      <label style="font-size:12px;margin-top:6px">Wie gaat eruit?</label>
-      <select id="wissel-zij-uit">${g.zij.map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
-      <label style="font-size:12px;margin-top:6px">Wie komt erin?</label>
-      <select id="wissel-zij-in">${(g.zijBench||[]).map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
+      ${bothHaveBench?`<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:13px;font-weight:600">
+        <input type="checkbox" id="cb-zij-wisselt" checked style="width:16px;height:16px">
+        Team Zij wisselt ook
+      </label>`:`<div class="card-label">Team Zij — wissel</div>`}
+      <div id="zij-wissel-fields">
+        <label style="font-size:12px;margin-top:6px">Wie gaat eruit?</label>
+        <select id="wissel-zij-uit">${opts(g.zij,defaultZijUit)}</select>
+        <label style="font-size:12px;margin-top:6px">Wie komt erin?</label>
+        <select id="wissel-zij-in">${(g.zijBench||[]).map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
+      </div>
     </div>`;
   }
   document.getElementById('wissel-content').innerHTML=html;
@@ -787,9 +875,11 @@ function confirmWissel(){
   const g=current;if(!g) return;
   if(!g.wisselingen) g.wisselingen=[];
   const wisseling={blaadje:g.rounds.length};
+  const cbWij=document.getElementById('cb-wij-wisselt');
+  const wijWisselt=!cbWij||cbWij.checked;
   const wijUitEl=document.getElementById('wissel-wij-uit');
   const wijInEl=document.getElementById('wissel-wij-in');
-  if(wijUitEl&&wijInEl){
+  if(wijWisselt&&wijUitEl&&wijInEl){
     const uitId=+wijUitEl.value,inId=+wijInEl.value;
     const uitIdx=g.wij.indexOf(uitId);
     const inBenchIdx=(g.wijBench||[]).indexOf(inId);
@@ -801,9 +891,11 @@ function confirmWissel(){
       wisseling.wijUit=uitId;wisseling.wijIn=inId;
     }
   }
+  const cbZij=document.getElementById('cb-zij-wisselt');
+  const zijWisselt=!cbZij||cbZij.checked;
   const zijUitEl=document.getElementById('wissel-zij-uit');
   const zijInEl=document.getElementById('wissel-zij-in');
-  if(zijUitEl&&zijInEl){
+  if(zijWisselt&&zijUitEl&&zijInEl){
     const uitId=+zijUitEl.value,inId=+zijInEl.value;
     const uitIdx=g.zij.indexOf(uitId);
     const inBenchIdx=(g.zijBench||[]).indexOf(inId);
@@ -818,6 +910,93 @@ function confirmWissel(){
   g.wisselingen.push(wisseling);
   saveAll();closeModal('modal-wissel');renderGame();
   showToast('✓ Wissel doorgevoerd!');
+}
+
+function openVolgordeModal(){
+  const g=current;if(!g) return;
+  const so=getSeatOrder(g);
+  if(so.length<4) return showToast('Volgorde wissel niet beschikbaar',true);
+  const w1=getPlayer(so[0])?.name||'?', w2=getPlayer(so[2])?.name||'?';
+  const z1=getPlayer(so[1])?.name||'?', z2=getPlayer(so[3])?.name||'?';
+  document.getElementById('volgorde-content').innerHTML=`
+    <p style="font-size:13px;color:rgba(245,240,232,.6);margin-bottom:14px">Wissel de zetelposities binnen hetzelfde team.</p>
+    <button class="btn btn-ghost" style="margin-bottom:10px" onclick="swapVolgorde('wij')">
+      🔀 WIJ: ${w1} ↔ ${w2}
+    </button>
+    <button class="btn btn-ghost" onclick="swapVolgorde('zij')">
+      🔀 ZIJ: ${z1} ↔ ${z2}
+    </button>`;
+  openModal('modal-volgorde');
+}
+
+function swapVolgorde(team){
+  const g=current;if(!g) return;
+  const so=getSeatOrder(g);
+  if(team==='wij'){
+    // WIJ zit op posities 0 en 2 (W-Z-W-Z)
+    [so[0],so[2]]=[so[2],so[0]];
+  } else {
+    // ZIJ zit op posities 1 en 3
+    [so[1],so[3]]=[so[3],so[1]];
+  }
+  g.seatOrder=so;
+  saveAll();closeModal('modal-volgorde');renderGame();
+  showToast('✓ Volgorde gewisseld');
+}
+
+function openRemovePlayerModal(){
+  const g=current;if(!g) return;
+  const allIds=[...g.wij,...g.zij,...(g.wijBench||[]),...(g.zijBench||[])];
+  const playedIds=new Set(g.rounds.map(r=>String(r.spelId||r.spelWij||r.spelZij)).filter(Boolean));
+  // Spelers die nooit gespeeld hebben EN verwijdering laat ≥4 spelers over
+  const activeCount=g.wij.length+g.zij.length;
+  const removable=allIds.filter(pid=>{
+    if(playedIds.has(String(pid))) return false;
+    // Minimaal 4 actieve spelers houden na verwijdering
+    const isActive=g.wij.includes(pid)||g.zij.includes(pid);
+    if(isActive&&activeCount<=4) return false;
+    return true;
+  });
+  if(!removable.length){
+    showToast('Geen spelers die verwijderd kunnen worden (iedereen heeft al gespeeld of minimaal 4 spelers vereist)',true);
+    return;
+  }
+  document.getElementById('remove-player-content').innerHTML=`
+    <p style="font-size:13px;color:rgba(245,240,232,.6);margin-bottom:14px">Alleen spelers die nog niet gespeeld hebben kunnen verwijderd worden.</p>
+    ${removable.map(pid=>{
+      const p=getPlayer(pid);if(!p) return '';
+      const team=getTeamForPlayer(g,pid);
+      const teamLabel=team==='wij'?'Wij':'Zij';
+      const isBench=!g.wij.includes(pid)&&!g.zij.includes(pid);
+      return `<button class="btn btn-ghost" style="margin-bottom:8px;display:flex;justify-content:space-between" onclick="confirmRemovePlayer(${pid})">
+        <span>${p.name}</span>
+        <span style="font-size:11px;color:rgba(245,240,232,.4)">${teamLabel}${isBench?' (bank)':''}</span>
+      </button>`;
+    }).join('')}`;
+  openModal('modal-remove-player');
+}
+
+function confirmRemovePlayer(pid){
+  const g=current;if(!g) return;
+  // Verwijder uit actief team
+  let removed=false;
+  ['wij','zij'].forEach(team=>{
+    const arr=g[team];
+    const idx=arr.indexOf(pid);
+    if(idx>=0){arr.splice(idx,1);removed=true;}
+  });
+  // Verwijder uit bench
+  ['wijBench','zijBench'].forEach(key=>{
+    if(!g[key]) return;
+    const idx=g[key].indexOf(pid);
+    if(idx>=0){g[key].splice(idx,1);removed=true;}
+  });
+  // Verwijder uit seatOrder
+  if(g.seatOrder){
+    const si=g.seatOrder.indexOf(pid);
+    if(si>=0) g.seatOrder.splice(si,1);
+  }
+  if(removed){saveAll();closeModal('modal-remove-player');renderGame();showToast('✓ Speler verwijderd');}
 }
 
 function openAddPlayerToGameModal(){
@@ -939,7 +1118,10 @@ function renderGame(){
   document.getElementById('round-num').textContent=rnd;
   document.getElementById('ronde-progress').textContent=`blaadje ${Math.min(g.rounds.length+1,16)}/16 · takkie ${Math.ceil((g.rounds.length+1)/4)}/4`;
 
-  const uitId=getUitbeurt(g.rounds.length);
+  const seatPlayers=getSeatOrder(g);
+  const starterIdx=Math.max(0,seatPlayers.indexOf(Number(g.starter)));
+  const roundIndex=g.rounds.length;
+  const uitId=getUitbeurt(roundIndex);
   const uitPlayer=getPlayer(uitId);
   if(uitPlayer){
     document.getElementById('uitbeurt-bar').style.display='flex';
@@ -952,24 +1134,63 @@ function renderGame(){
       teamTag.style.color=uitTeam==='wij'?'rgba(100,200,120,.8)':'rgba(200,120,100,.8)';
     }
   }
+  // Deler = de speler vóór de uitkomer in de zetelorde
+  const dealerBar=document.getElementById('dealer-bar');
+  const dealerNameEl=document.getElementById('dealer-name');
+  if(dealerBar&&dealerNameEl&&seatPlayers.length){
+    const dealerIdx=(starterIdx+roundIndex-1+seatPlayers.length)%seatPlayers.length;
+    const dealerPlayer=getPlayer(seatPlayers[dealerIdx]);
+    if(dealerPlayer){
+      dealerBar.style.display='block';
+      dealerNameEl.textContent=dealerPlayer.name;
+    }
+  }
 
   const allOpts=getSeatOrder(g).map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('');
   const spelSelect=document.getElementById('sel-speler');
   spelSelect.innerHTML=`<option value="">— Kies wie speelt —</option>`+allOpts;
   spelSelect.value=String(uitId||'');
 
-  // Wissel bar altijd tonen (wissel knop alleen als er bankspelers zijn)
+  // Wissel bar altijd tonen
   const wisselBar=document.getElementById('wissel-bar');
   if(wisselBar){
     const hasBench=((g.wijBench||[]).length+(g.zijBench||[]).length)>0;
     wisselBar.style.display='block';
     const wisselBtn=document.getElementById('btn-wissel-speler');
     if(wisselBtn) wisselBtn.style.display=hasBench?'inline-flex':'none';
+    // Volgorde-knop: altijd tonen als er 4+ spelers zijn
+    let volgordeBtn=document.getElementById('btn-volgorde');
+    if(!volgordeBtn){
+      volgordeBtn=document.createElement('button');
+      volgordeBtn.id='btn-volgorde';
+      volgordeBtn.className='btn btn-ghost';
+      volgordeBtn.style.cssText='width:auto;padding:5px 14px;font-size:12px';
+      volgordeBtn.textContent='🔀 Volgorde';
+      volgordeBtn.onclick=openVolgordeModal;
+      wisselBar.appendChild(volgordeBtn);
+    }
+    // Verwijder-knop: toon als er verwijderbare spelers zijn
+    let removeBtn=document.getElementById('btn-remove-player');
+    if(!removeBtn){
+      removeBtn=document.createElement('button');
+      removeBtn.id='btn-remove-player';
+      removeBtn.className='btn btn-ghost';
+      removeBtn.style.cssText='width:auto;padding:5px 14px;font-size:12px';
+      removeBtn.textContent='🗑 Eruit';
+      removeBtn.onclick=openRemovePlayerModal;
+      wisselBar.appendChild(removeBtn);
+    }
+    const allIds=[...g.wij,...g.zij,...(g.wijBench||[]),...(g.zijBench||[])];
+    const playedIds=new Set(g.rounds.map(r=>String(r.spelId||r.spelWij||r.spelZij)).filter(Boolean));
+    const hasRemovable=allIds.some(pid=>!playedIds.has(String(pid))&&(g.wij.length+g.zij.length>4||(!g.wij.includes(pid)&&!g.zij.includes(pid))));
+    removeBtn.style.display=hasRemovable?'inline-flex':'none';
   }
 
   const q=[20,50,100];
-  document.getElementById('quick-wij').innerHTML=q.map(v=>`<button class="quick-btn" onclick="addRoem('wij',${v})">+${v} roem</button>`).join('');
-  document.getElementById('quick-zij').innerHTML=q.map(v=>`<button class="quick-btn" onclick="addRoem('zij',${v})">+${v} roem</button>`).join('');
+  const wisBtn='<button class="quick-btn" onclick="clearRoem(\'wij\')" style="color:rgba(231,76,60,.8)">× wis</button>';
+  const wisBtnZ='<button class="quick-btn" onclick="clearRoem(\'zij\')" style="color:rgba(231,76,60,.8)">× wis</button>';
+  document.getElementById('quick-wij').innerHTML=q.map(v=>`<button class="quick-btn" onclick="addRoem('wij',${v})">+${v} roem</button>`).join('')+wisBtn;
+  document.getElementById('quick-zij').innerHTML=q.map(v=>`<button class="quick-btn" onclick="addRoem('zij',${v})">+${v} roem</button>`).join('')+wisBtnZ;
 
   renderRoundTable();
 
@@ -994,6 +1215,10 @@ function clampAndCalc(team){
 function addRoem(team,val){
   const el=document.getElementById('input-roem-'+team);
   el.value=(parseInt(el.value)||0)+val;
+}
+
+function clearRoem(team){
+  document.getElementById('input-roem-'+team).value='';
 }
 
 function getTeamForPlayer(g,playerId){
@@ -1042,11 +1267,17 @@ function getRoundAward(g,ronde){
   let w=parseInt(ronde.w)||0;
   let z=parseInt(ronde.z)||0;
   const special=((ronde.special||'') || getAutoNatSpecial(g,ronde)).toUpperCase();
-  if(special.includes('NAT WIJ')){
+  if(special.includes('NAT WIJ')||special.includes('VERZ WIJ')){
     return {w:0,z:162+rw+rz,roemWij:0,roemZij:rw+rz};
   }
-  if(special.includes('NAT ZIJ')){
+  if(special.includes('NAT ZIJ')||special.includes('VERZ ZIJ')){
     return {w:162+rw+rz,z:0,roemWij:rw+rz,roemZij:0};
+  }
+  if(special.includes('PIT WIJ')){
+    return {w:w+rw+rz,z:0,roemWij:rw+rz,roemZij:0};
+  }
+  if(special.includes('PIT ZIJ')){
+    return {w:0,z:z+rw+rz,roemWij:0,roemZij:rw+rz};
   }
   return {w:w+rw,z:z+rz,roemWij:rw,roemZij:rz};
 }
@@ -1093,15 +1324,16 @@ function applySpecial(type,team){
   if(_modalJustClosed||_blockSubmit) return;
   const other=team==='wij'?'zij':'wij';
   if(type==='nat'){
-    // Bewaar ingevoerde roem — die mag niet verloren gaan bij NAT
-    const roemWij=document.getElementById('input-roem-wij').value;
-    const roemZij=document.getElementById('input-roem-zij').value;
+    // Som beide teams' roem + 100 basis, geef alles aan de winnaar
+    const roemW=parseInt(document.getElementById('input-roem-wij').value)||0;
+    const roemZ=parseInt(document.getElementById('input-roem-zij').value)||0;
+    const totalRoem=roemW+roemZ+100;
     document.getElementById('input-wij').value='';
     document.getElementById('input-zij').value='';
     document.getElementById('input-'+team).value=0;
     document.getElementById('input-'+other).value=162;
-    document.getElementById('input-roem-wij').value=roemWij;
-    document.getElementById('input-roem-zij').value=roemZij;
+    document.getElementById('input-roem-'+team).value=0;
+    document.getElementById('input-roem-'+other).value=totalRoem;
     document.getElementById('input-wij').dataset.special='NAT '+(team==='wij'?'WIJ':'ZIJ');
     document.getElementById('input-wij').dataset.specialTime=Date.now();
     document.getElementById('input-wij').dataset.natTeam=team;
@@ -1113,9 +1345,13 @@ function applySpecial(type,team){
     // Legacy pad (directe team-keuze) — open picker, selectVerzPlayer handelt de rest af
     openVerzPicker();
   } else if(type==='pit'){
+    const roemW=parseInt(document.getElementById('input-roem-wij').value)||0;
+    const roemZ=parseInt(document.getElementById('input-roem-zij').value)||0;
+    const totalRoem=roemW+roemZ+100;
     document.getElementById('input-'+team).value=162;
     document.getElementById('input-'+other).value=0;
-    document.getElementById('input-roem-'+team).value=100;
+    document.getElementById('input-roem-'+team).value=totalRoem;
+    document.getElementById('input-roem-'+other).value=0;
     document.getElementById('input-wij').dataset.special='PIT '+(team==='wij'?'WIJ':'ZIJ');
     document.getElementById('input-wij').dataset.specialTime=Date.now();
     showToast('💥 PIT '+(team==='wij'?'Wij':'Zij')+' — 162 + 100 roem');
@@ -1128,8 +1364,8 @@ let _pendingVerzPlayerId=null; // ID van de speler die verzaakte (kan afwijken v
 function openVerzPicker(){
   const g=current;if(!g) return;
   // Toon alle spelers — iedereen kan verzaken
-  const wijIds=[...g.wij,...(g.wijBench||[])];
-  const zijIds=[...g.zij,...(g.zijBench||[])];
+  const wijIds=[...g.wij];
+  const zijIds=[...g.zij];
   document.getElementById('verz-picker-title').innerHTML=
     `Wie heeft verzaakt? <span class="modal-close" onclick="closeModal('modal-verz-picker')">✕</span>`;
   const btnHtml=[
@@ -1148,10 +1384,14 @@ function selectVerzPlayer(playerId){
   // Team bepalen op basis van wie verzaakte (niet de maker)
   const team=getTeamForPlayer(g,playerId)||'wij';
   const other=team==='wij'?'zij':'wij';
+  // Som beide teams' roem + 100 basis, geef alles aan de winnaar
+  const prevRoemW=parseInt(document.getElementById('input-roem-wij').value)||0;
+  const prevRoemZ=parseInt(document.getElementById('input-roem-zij').value)||0;
+  const totalRoem=prevRoemW+prevRoemZ+100;
   ['input-wij','input-zij','input-roem-wij','input-roem-zij'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('input-'+team).value=0;
   document.getElementById('input-'+other).value=162;
-  document.getElementById('input-roem-'+other).value=100;
+  document.getElementById('input-roem-'+other).value=totalRoem;
   const inputWij=document.getElementById('input-wij');
   inputWij.dataset.special='VERZ '+(team==='wij'?'WIJ':'ZIJ');
   inputWij.dataset.specialTime=Date.now();
@@ -1309,22 +1549,29 @@ function renderRoundTable(){
 
   let rows='';
   let cumW=0,cumZ=0,cumRW=0,cumRZ=0;
+  let wijLossStreak=0,zijLossStreak=0;
 
   g.rounds.forEach((r,i)=>{
     const rSp=r.special||'';
+    const wijNat=rSp.includes('NAT WIJ')||rSp.includes('VERZ WIJ');
+    const zijNat=rSp.includes('NAT ZIJ')||rSp.includes('VERZ ZIJ');
     // Effective punten (enforce 0/162 for NAT/VERZ)
     let pw=r.w,pz=r.z;
-    if(rSp.includes('NAT WIJ')||rSp.includes('VERZ WIJ')){pw=0;pz=162;}
-    else if(rSp.includes('NAT ZIJ')||rSp.includes('VERZ ZIJ')){pw=162;pz=0;}
+    if(wijNat){pw=0;pz=162;}
+    else if(zijNat){pw=162;pz=0;}
 
     // Bij NAT: roem van verliezende kant gaat naar winnaar
     let dispRW=r.rw||0, dispRZ=r.rz||0;
-    if(rSp.includes('NAT WIJ')||rSp.includes('VERZ WIJ')){
-      dispRZ=(r.rw||0)+(r.rz||0); dispRW=0;
-    } else if(rSp.includes('NAT ZIJ')||rSp.includes('VERZ ZIJ')){
-      dispRW=(r.rw||0)+(r.rz||0); dispRZ=0;
-    }
+    if(wijNat){dispRZ=(r.rw||0)+(r.rz||0);dispRW=0;}
+    else if(zijNat){dispRW=(r.rw||0)+(r.rz||0);dispRZ=0;}
     cumW+=pw;cumZ+=pz;cumRW+=dispRW;cumRZ+=dispRZ;
+
+    // Jagen: track wie er minder totaalpunten (kaart+roem) had deze ronde
+    const totalW=pw+dispRW, totalZ=pz+dispRZ;
+    if(totalW<totalZ){wijLossStreak++;zijLossStreak=0;}
+    else if(totalZ<totalW){zijLossStreak++;wijLossStreak=0;}
+    else{wijLossStreak=0;zijLossStreak=0;}
+    const isJagen=wijLossStreak>=3||zijLossStreak>=3;
 
     const rondeSpelerId=r.spelId||r.spelWij||r.spelZij;
     const spelNaam=rondeSpelerId?getPlayer(+rondeSpelerId)?.name?.split(' ')[0]:'';
@@ -1406,6 +1653,14 @@ function editRound(i){
   document.getElementById('edit-input-zij').value=r.z;
   document.getElementById('edit-input-roem-wij').value=r.rw||0;
   document.getElementById('edit-input-roem-zij').value=r.rz||0;
+  // Speler-select vullen
+  const spelSel=document.getElementById('edit-speler-select');
+  if(spelSel){
+    const allPlayers=getSeatOrder(g);
+    const currentSpeler=r.spelId||r.spelWij||r.spelZij;
+    spelSel.innerHTML=`<option value="">— Onbekend —</option>`+
+      allPlayers.map(id=>`<option value="${id}"${String(id)===String(currentSpeler)?'selected':''}>${getPlayer(id)?.name||'?'}</option>`).join('');
+  }
   const specRow=document.getElementById('edit-special-row');
   const specLabel=document.getElementById('edit-special-label');
   const manualSpecial=(r.special||'').replace(/\s*\(auto\)/,'').trim();
@@ -1444,6 +1699,15 @@ function saveEditedRound(){
   if(!isValidRoem(newRW)) return showToast('Roem Wij klopt niet — gebruik veelvouden van 20, 50 of 100',true);
   if(!isValidRoem(newRZ)) return showToast('Roem Zij klopt niet — gebruik veelvouden van 20, 50 of 100',true);
   r.w=newW;r.z=newZ;r.rw=newRW;r.rz=newRZ;
+  // Speler updaten als gewijzigd
+  const spelSel=document.getElementById('edit-speler-select');
+  if(spelSel&&spelSel.value){
+    const newSpelId=+spelSel.value;
+    r.spelId=newSpelId;
+    const spelTeam=getTeamForPlayer(g,newSpelId);
+    r.spelWij=spelTeam==='wij'?newSpelId:null;
+    r.spelZij=spelTeam==='zij'?newSpelId:null;
+  }
   refreshRoundAutoSpecial(g,r);
   recalcGameTotals(g);
   saveAll();
@@ -1467,12 +1731,15 @@ function confirmEndGame(){
   const wn=allWij.map(id=>getPlayer(id)?.name||'?').join(' & ');
   const zn=allZij.map(id=>getPlayer(id)?.name||'?').join(' & ');
   const rondes=g.rounds.length;
+  const durMs=g.date?Date.now()-new Date(g.date).getTime():null;
+  const durStr=durMs?formatDuration(durMs):'';
   const boom=rondes>=16?'✅ Volledige boom (16 blaadjes)':'⚠️ Vroeg gestopt ('+rondes+'/16 blaadjes)';
   const saveBtn=document.getElementById('end-game-save-btn');
   if(saveBtn) saveBtn.textContent=rondes>=16?'✓ Opslaan en nieuwe boom starten':'✓ Opslaan & afsluiten';
   document.getElementById('end-game-summary').innerHTML=`
     <div style="text-align:center">
-      <div style="font-size:12px;color:rgba(245,240,232,.4);margin-bottom:8px">${boom}</div>
+      <div style="font-size:12px;color:rgba(245,240,232,.4);margin-bottom:4px">${boom}</div>
+      ${durStr?`<div style="font-size:11px;color:rgba(245,240,232,.3);margin-bottom:8px">⏱ ${durStr}</div>`:''}
       <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;opacity:.7;margin-bottom:2px">Wij</div>
       <div style="font-size:13px;color:rgba(245,240,232,.6)">${wn}</div>
       <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin:8px 0">
@@ -1541,9 +1808,10 @@ function renderHistory(){
     const statusTag=g.active
       ?`<span class="tag" style="background:rgba(39,174,96,.2);color:#2ecc71">Bezig</span>`
       :draw?`<span class="tag tag-draw">Gelijk</span>`:won?`<span class="tag tag-win">Wij won</span>`:`<span class="tag tag-loss">Zij won</span>`;
+    const gameDur=(!g.active&&g.date&&g.endDate)?formatDuration(new Date(g.endDate)-new Date(g.date)):null;
     return `<div class="game-tile">
       <div class="game-tile-header">
-        <span class="game-date">${d} · ${g.rounds.length} blaadjes ${boomTag}</span>
+        <span class="game-date">${d} · ${g.rounds.length} blaadjes ${boomTag}${gameDur?' · ⏱'+gameDur:''}</span>
         ${statusTag}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center">
@@ -1609,15 +1877,23 @@ function openGameDetail(id){
 
   let rows='';
   let cumW=0,cumZ=0,cumRW=0,cumRZ=0;
+  let wijLossStreak=0,zijLossStreak=0;
   g.rounds.forEach((r,i)=>{
     const rSp=r.special||'';
+    const wijNat=rSp.includes('NAT WIJ')||rSp.includes('VERZ WIJ');
+    const zijNat=rSp.includes('NAT ZIJ')||rSp.includes('VERZ ZIJ');
     let pw=r.w,pz=r.z;
-    if(rSp.includes('NAT WIJ')||rSp.includes('VERZ WIJ')){pw=0;pz=162;}
-    else if(rSp.includes('NAT ZIJ')||rSp.includes('VERZ ZIJ')){pw=162;pz=0;}
+    if(wijNat){pw=0;pz=162;}
+    else if(zijNat){pw=162;pz=0;}
     let dispRW=r.rw||0,dispRZ=r.rz||0;
-    if(rSp.includes('NAT WIJ')||rSp.includes('VERZ WIJ')){dispRZ=(r.rw||0)+(r.rz||0);dispRW=0;}
-    else if(rSp.includes('NAT ZIJ')||rSp.includes('VERZ ZIJ')){dispRW=(r.rw||0)+(r.rz||0);dispRZ=0;}
+    if(wijNat){dispRZ=(r.rw||0)+(r.rz||0);dispRW=0;}
+    else if(zijNat){dispRW=(r.rw||0)+(r.rz||0);dispRZ=0;}
     cumW+=pw;cumZ+=pz;cumRW+=dispRW;cumRZ+=dispRZ;
+    const totalW=pw+dispRW,totalZ=pz+dispRZ;
+    if(totalW<totalZ){wijLossStreak++;zijLossStreak=0;}
+    else if(totalZ<totalW){zijLossStreak++;wijLossStreak=0;}
+    else{wijLossStreak=0;zijLossStreak=0;}
+    const isJagen=wijLossStreak>=3||zijLossStreak>=3;
     const rondeSpelerId=r.spelId||r.spelWij||r.spelZij;
     const spelNaam=rondeSpelerId?getPlayer(+rondeSpelerId)?.name?.split(' ')[0]:'';
     const uitNaam=r.uitId?getPlayer(+r.uitId)?.name?.split(' ')[0]:'';
@@ -1713,6 +1989,11 @@ function renderAlgemeenStats(){
   const totGames=games.length;
   const totRondes=games.reduce((s,g)=>s+g.rounds.length,0);
   const completedBomen=games.filter(g=>g.completed).length;
+  const finishedGames=games.filter(g=>!g.active);
+  const avgBlaadjes=finishedGames.length?Math.round(finishedGames.reduce((s,g)=>s+g.rounds.length,0)/finishedGames.length):0;
+  const timedGames=finishedGames.filter(g=>g.completed&&g.date&&g.endDate);
+  const avgDurMs=timedGames.length?timedGames.reduce((s,g)=>s+(new Date(g.endDate)-new Date(g.date)),0)/timedGames.length:null;
+  const avgDurStr=avgDurMs?formatDuration(avgDurMs):null;
   let allNat=0,allVerz=0,allPit=0;
   games.forEach(g=>g.rounds.forEach(r=>{if(r.special){if(r.special.includes('NAT'))allNat++;if(r.special.includes('VERZ'))allVerz++;if(r.special.includes('PIT'))allPit++;}}));
   const topScorer=players.sort((a,b)=>b.highScore-a.highScore)[0];
@@ -1722,9 +2003,10 @@ function renderAlgemeenStats(){
       <div class="card-label">Overzicht</div>
       <div class="stat-grid">
         <div class="stat-box"><div class="stat-value">${totGames}</div><div class="stat-label">🌳 Bomen</div></div>
-        <div class="stat-box"><div class="stat-value">${completedBomen}</div><div class="stat-label">✅ Volledig</div></div>
+        <div class="stat-box"><div class="stat-value">${totGames?Math.round(completedBomen/totGames*100):0}%</div><div class="stat-label">✅ Volledig</div></div>
         <div class="stat-box"><div class="stat-value">${totRondes}</div><div class="stat-label">🔄 Rondes</div></div>
-        <div class="stat-box"><div class="stat-value">${Math.round(totRondes/(totGames||1))}</div><div class="stat-label">Gem. blaadjes</div></div>
+        <div class="stat-box"><div class="stat-value">${avgBlaadjes}</div><div class="stat-label">Gem. blaadjes</div></div>
+        ${avgDurStr?`<div class="stat-box"><div class="stat-value">${avgDurStr}</div><div class="stat-label">⏱ Gem. speelduur</div></div>`:''}
       </div>
     </div>
     <div class="card">
@@ -1758,50 +2040,96 @@ function renderAlgemeenStats(){
 
 function getDuoKey(a,b){return [a,b].sort().join('-')}
 
+// Bepaal de actieve 2 spelers per team op het moment van ronde roundIdx (0-based)
+// door de wisselingen terug te spelen vanuit de huidige staat van g.wij/g.zij
+function getActiveTeamsAtRound(g, roundIdx){
+  let wij=[...g.wij], zij=[...g.zij];
+  const ws=g.wisselingen||[];
+  // Undo alle wisselingen om startopstelling te reconstrueren
+  [...ws].reverse().forEach(w=>{
+    if(w.wijIn!==undefined){const i=wij.indexOf(w.wijIn);if(i>=0)wij[i]=w.wijUit;}
+    if(w.zijIn!==undefined){const i=zij.indexOf(w.zijIn);if(i>=0)zij[i]=w.zijUit;}
+  });
+  // Replay wisselingen tot en met roundIdx
+  ws.forEach(w=>{
+    if(w.blaadje<=roundIdx){
+      if(w.wijIn!==undefined){const i=wij.indexOf(w.wijUit);if(i>=0)wij[i]=w.wijIn;}
+      if(w.zijIn!==undefined){const i=zij.indexOf(w.zijUit);if(i>=0)zij[i]=w.zijIn;}
+    }
+  });
+  return {wij,zij};
+}
+
 function renderDuoStats(){
   const duos={};
+  const ensureDuo=(a,b)=>{
+    const key=getDuoKey(a,b);
+    if(!duos[key]) duos[key]={key,p1:Math.min(a,b)===a?a:b,p2:Math.min(a,b)===a?b:a,
+      games:0,totalGamePoints:0,
+      roundsActive:0,pointsInRounds:0,
+      nat:0,verz:0,pit:0,
+      natByP1:0,natByP2:0,natUnknown:0,
+      verzByP1:0,verzByP2:0,verzUnknown:0,
+      pitByP1:0,pitByP2:0,pitUnknown:0};
+    return duos[key];
+  };
+
   games.forEach(g=>{
-    const teams=[[...g.wij],[...g.zij]];
-    teams.forEach((team,ti)=>{
-      if(team.length<2) return;
-      const key=getDuoKey(team[0],team[1]);
-      if(!duos[key]) duos[key]={key,p1:team[0],p2:team[1],games:0,wins:0,losses:0,draws:0,nat:0,verz:0,pit:0,
-        natByP1:0,natByP2:0,natUnknown:0,pitByP1:0,pitByP2:0,pitUnknown:0,verzByP1:0,verzByP2:0,verzUnknown:0,completedBomen:0};
-      const d=duos[key];
-      d.games++;
-      const isWij=ti===0;
-      const won=isWij?(g.finalWij>g.finalZij):(g.finalZij>g.finalWij);
-      const draw=g.finalWij===g.finalZij;
-      if(draw) d.draws++; else if(won) d.wins++; else d.losses++;
-      if(g.completed) d.completedBomen++;
-      g.rounds.forEach(r=>{
-        if(!r.special) return;
-        const sp=r.special;
-        const teamTag=isWij?'WIJ':'ZIJ';
-        if(sp.includes('NAT '+teamTag)){
+    // "bomen samen": tellen voor alle spelers die samen in het spel zaten (actief of bank)
+    const wijAll=[...g.wij,...(g.wijBench||[])];
+    const zijAll=[...g.zij,...(g.zijBench||[])];
+    const finalWij=g.active?g.scoreWij:(g.finalWij??g.scoreWij);
+    const finalZij=g.active?g.scoreZij:(g.finalZij??g.scoreZij);
+    [wijAll,zijAll].forEach((team,ti)=>{
+      const pts=ti===0?finalWij:finalZij;
+      for(let a=0;a<team.length;a++)
+        for(let b=a+1;b<team.length;b++){
+          const d=ensureDuo(team[a],team[b]);
+          d.games++;
+          d.totalGamePoints+=pts||0;
+        }
+    });
+
+    // nat/verz/pit: altijd toegeschreven aan het ACTIEVE duo op dat moment
+    g.rounds.forEach((r,i)=>{
+      if(!r.special) return;
+      const sp=r.special;
+      const {wij:wa,zij:za}=getActiveTeamsAtRound(g,i);
+      // Effectieve punten voor deze ronde (0 bij nat/verz)
+      const sp0=r.special||'';
+      const rPtsWij=sp0.includes('NAT WIJ')||sp0.includes('VERZ WIJ')?0:(r.w||0);
+      const rPtsZij=sp0.includes('NAT ZIJ')||sp0.includes('VERZ ZIJ')?0:(r.z||0);
+      [{team:wa,tag:'WIJ',isWij:true,rPts:rPtsWij},{team:za,tag:'ZIJ',isWij:false,rPts:rPtsZij}].forEach(({team,tag,isWij,rPts})=>{
+        if(team.length<2) return;
+        const d=ensureDuo(team[0],team[1]);
+        d.roundsActive++;
+        d.pointsInRounds+=rPts;
+        const [pa,pb]=[team[0],team[1]].sort();
+        // p1/p2 in duos zijn gesorteerd op ID — match via key
+        const actualP1=duos[d.key].p1, actualP2=duos[d.key].p2;
+
+        if(sp.includes('NAT '+tag)){
           d.nat++;
-          // Maker: spelWij/spelZij > spelId (fallback oude data) > uitId
-          let natMaker=isWij?+r.spelWij:+r.spelZij;
-          if(!natMaker) natMaker=+r.spelId||0;
-          if(!natMaker&&r.uitId&&team.includes(+r.uitId)) natMaker=+r.uitId;
-          if(natMaker===team[0]) d.natByP1++;
-          else if(natMaker===team[1]) d.natByP2++;
+          let maker=isWij?+r.spelWij:+r.spelZij;
+          if(!maker) maker=+r.spelId||0;
+          if(!maker&&r.uitId&&team.includes(+r.uitId)) maker=+r.uitId;
+          if(maker===actualP1) d.natByP1++;
+          else if(maker===actualP2) d.natByP2++;
           else d.natUnknown++;
         }
-        if(sp.includes('VERZ '+teamTag)){
+        if(sp.includes('VERZ '+tag)){
           d.verz++;
-          // verzPlayerId > spelWij/spelZij (team-specifiek) > spelId (oude data zonder spelWij)
           const vId=r.verzPlayerId||(isWij?r.spelWij:r.spelZij)||r.spelId;
           const vm=+vId;
-          if(vm===team[0]) d.verzByP1++;
-          else if(vm===team[1]) d.verzByP2++;
+          if(vm===actualP1) d.verzByP1++;
+          else if(vm===actualP2) d.verzByP2++;
           else d.verzUnknown++;
         }
-        if(sp.includes('PIT '+teamTag)){
+        if(sp.includes('PIT '+tag)){
           d.pit++;
-          const pitMaker=isWij?+r.spelWij:+r.spelZij;
-          if(pitMaker===team[0]) d.pitByP1++;
-          else if(pitMaker===team[1]) d.pitByP2++;
+          const maker=isWij?+r.spelWij:+r.spelZij;
+          if(maker===actualP1) d.pitByP1++;
+          else if(maker===actualP2) d.pitByP2++;
           else d.pitUnknown++;
         }
       });
@@ -1809,9 +2137,9 @@ function renderDuoStats(){
   });
 
   const entries=Object.values(duos).sort((a,b)=>{
-    const wrA=a.games?a.wins/a.games:0;
-    const wrB=b.games?b.wins/b.games:0;
-    return wrB-wrA||b.games-a.games;
+    const avgA=a.games?a.totalGamePoints/a.games:0;
+    const avgB=b.games?b.totalGamePoints/b.games:0;
+    return avgB-avgA||b.games-a.games;
   });
   if(!entries.length) return `<div class="empty"><div class="empty-icon">👫</div><div class="empty-text">Nog geen duo-data</div></div>`;
 
@@ -1819,30 +2147,42 @@ function renderDuoStats(){
   const cards=entries.map(d=>{
     const p1=getPlayer(d.p1),p2=getPlayer(d.p2);
     if(!p1||!p2) return '';
-    const wr=d.games?Math.round(d.wins/d.games*100):0;
-    const natAvg=d.games?(d.nat/d.games).toFixed(1):0;
-    const verzAvg=d.games?(d.verz/d.games).toFixed(1):0;
+    if(!d.games&&!d.nat&&!d.verz&&!d.pit) return '';
+    const avgPerBoom=d.games?Math.round(d.totalGamePoints/d.games):0;
+    const avgPerBlaadje=d.roundsActive?Math.round(d.pointsInRounds/d.roundsActive):0;
+    // % samen: van alle potjes dat beiden speelden, hoe vaak zaten ze in hetzelfde team?
+    const totalBothInGame=games.filter(g=>{
+      const all=[...g.wij,...(g.wijBench||[]),...g.zij,...(g.zijBench||[])];
+      return all.includes(d.p1)&&all.includes(d.p2);
+    }).length;
+    const pctSamen=totalBothInGame?Math.round(d.games/totalBothInGame*100):0;
     return `<div class="duo-card">
       <div class="duo-header">
-        <div style="display:flex;gap:-6px">
+        <div style="display:flex">
           <div class="avatar" style="width:36px;height:36px;font-size:14px">${p1.name[0]}</div>
           <div class="avatar" style="width:36px;height:36px;font-size:14px;margin-left:-8px">${p2.name[0]}</div>
         </div>
         <div>
           <div class="duo-name">${p1.name} & ${p2.name}</div>
-          <div style="font-size:11px;color:rgba(245,240,232,.4)">${d.games} bomen samen</div>
-        </div>
-        <div style="margin-left:auto;text-align:right">
-          <div style="font-weight:700;color:${wr>=50?'var(--win)':'var(--loss)'}">${wr}%</div>
-          <div style="font-size:10px;color:rgba(245,240,232,.35)">winrate</div>
         </div>
       </div>
-      <div class="bar-wrap" style="margin-bottom:10px"><div class="bar-fill" style="width:${wr}%"></div></div>
       <div class="stat-grid" style="margin-bottom:10px">
-        <div class="stat-box"><div class="stat-value" style="color:var(--win)">${d.wins}</div><div class="stat-label">🏆 Gewonnen</div></div>
-        <div class="stat-box"><div class="stat-value" style="color:var(--loss)">${d.losses}</div><div class="stat-label">💀 Verloren</div></div>
-        <div class="stat-box"><div class="stat-value">${d.completedBomen}</div><div class="stat-label">🌳 Volledige bomen</div></div>
-        <div class="stat-box"><div class="stat-value">${d.games-d.completedBomen}</div><div class="stat-label">🌿 Onvolledig</div></div>
+        <div class="stat-box">
+          <div class="stat-value" style="color:var(--gold)">${avgPerBoom}</div>
+          <div class="stat-label">📊 Gem. per boom</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value" style="color:var(--gold)">${avgPerBlaadje}</div>
+          <div class="stat-label">📋 Gem. per blaadje</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${d.games}</div>
+          <div class="stat-label">🤝 Samen in team</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-value">${pctSamen}%</div>
+          <div class="stat-label">📅 Van alle potjes</div>
+        </div>
       </div>
       <div class="stat-grid">
         <div class="stat-box">
@@ -1858,42 +2198,125 @@ function renderDuoStats(){
         </div>
       </div>
     </div>`;
-  }).join('');
+  }).filter(Boolean).join('');
 
-  return cards;
+  return cards||`<div class="empty"><div class="empty-icon">👫</div><div class="empty-text">Nog geen duo-data</div></div>`;
+}
+
+// Bouw individuele head-to-head data: voor elk koppel (p1 vs p2) dat ooit tegenover elkaar stond
+function buildH2H(){
+  const h2h={};
+  const ensure=(a,b)=>{
+    const key=[a,b].sort().join('-');
+    if(!h2h[key]) h2h[key]={p1:Math.min(a,b),p2:Math.max(a,b),games:0,p1Wins:0,p2Wins:0,draws:0};
+    return h2h[key];
+  };
+  games.filter(g=>!g.active).forEach(g=>{
+    const wijAll=[...g.wij,...(g.wijBench||[])];
+    const zijAll=[...g.zij,...(g.zijBench||[])];
+    const wijWon=(g.finalWij??g.scoreWij)>(g.finalZij??g.scoreZij);
+    const draw=(g.finalWij??g.scoreWij)===(g.finalZij??g.scoreZij);
+    wijAll.forEach(w=>zijAll.forEach(z=>{
+      const d=ensure(w,z);
+      d.games++;
+      const wIsP1=w===d.p1; // p1 is altijd de kleinste ID
+      if(draw) d.draws++;
+      else if(wijWon){ if(wIsP1) d.p1Wins++; else d.p2Wins++; }
+      else { if(wIsP1) d.p2Wins++; else d.p1Wins++; }
+    }));
+  });
+  return h2h;
 }
 
 function renderTegStats(){
-  // Head-to-head between duo pairs
-  const matchups={};
-  games.forEach(g=>{
-    const wKey=getDuoKey(g.wij[0],g.wij[1]);
-    const zKey=getDuoKey(g.zij[0],g.zij[1]);
-    const mk=wKey+'|'+zKey;
-    const mk2=zKey+'|'+wKey;
-    const key=mk<mk2?mk:mk2;
-    if(!matchups[key]) matchups[key]={wDuo:g.wij,zDuo:g.zij,games:0,wWins:0,zWins:0,draws:0};
-    const m=matchups[key];m.games++;
-    if(g.finalWij>g.finalZij) m.wWins++;
-    else if(g.finalZij>g.finalWij) m.zWins++;
-    else m.draws++;
-  });
-  const entries=Object.values(matchups).sort((a,b)=>b.games-a.games);
-  if(!entries.length) return `<div class="empty"><div class="empty-icon">⚔️</div><div class="empty-text">Nog geen onderlinge duels</div></div>`;
-  return entries.map(m=>{
-    const wn=m.wDuo.map(id=>getPlayer(id)?.name||'?').join(' & ');
-    const zn=m.zDuo.map(id=>getPlayer(id)?.name||'?').join(' & ');
-    const wWr=m.games?Math.round(m.wWins/m.games*100):0;
-    return `<div class="duo-card">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-        <div><div style="font-weight:700;font-size:14px">${wn}</div><div style="font-size:10px;color:rgba(245,240,232,.4)">vs</div><div style="font-weight:700;font-size:14px">${zn}</div></div>
-        <div style="text-align:right"><div style="font-size:11px;color:rgba(245,240,232,.4)">${m.games} duels</div></div>
+  const h2h=buildH2H();
+  const allPids=[...new Set(Object.values(h2h).flatMap(d=>[d.p1,d.p2]))];
+  const activePids=allPids.filter(id=>getPlayer(id));
+  if(!activePids.length) return `<div class="empty"><div class="empty-icon">⚔️</div><div class="empty-text">Nog geen onderlinge duels</div></div>`;
+
+  return activePids.map(pid=>{
+    const p=getPlayer(pid);if(!p) return '';
+    // Verzamel alle matchups voor deze speler
+    const myMatchups=Object.values(h2h).filter(d=>d.p1===pid||d.p2===pid).map(d=>{
+      const oppId=d.p1===pid?d.p2:d.p1;
+      const myWins=d.p1===pid?d.p1Wins:d.p2Wins;
+      const wr=d.games?Math.round(myWins/d.games*100):0;
+      return {oppId,games:d.games,myWins,wr};
+    }).filter(m=>m.games>0).sort((a,b)=>b.games-a.games);
+    if(!myMatchups.length) return '';
+
+    const best=myMatchups.reduce((a,b)=>b.wr>a.wr?b:a);
+    const worst=myMatchups.reduce((a,b)=>b.wr<a.wr?b:a);
+    const bestP=getPlayer(best.oppId);
+    const worstP=getPlayer(worst.oppId);
+    const avImg=p.photo
+      ?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+      :`${p.name[0].toUpperCase()}`;
+
+    return `<div class="player-tile" onclick="openTegDetail(${pid})" style="padding:14px 16px;cursor:pointer">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="avatar" style="width:48px;height:48px;font-size:18px;flex-shrink:0">${avImg}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:15px;margin-bottom:6px">${p.name}</div>
+          <div style="display:flex;flex-direction:column;gap:4px">
+            ${bestP?`<div style="font-size:12px;display:flex;align-items:center;gap:6px">
+              <span style="background:rgba(39,174,96,.15);color:var(--win);border-radius:6px;padding:2px 7px;font-weight:600;font-size:11px">${best.wr}%</span>
+              <span style="color:rgba(245,240,232,.55)">vs ${bestP.name} — gunstigst</span>
+            </div>`:''}
+            ${worstP&&worst.oppId!==best.oppId?`<div style="font-size:12px;display:flex;align-items:center;gap:6px">
+              <span style="background:rgba(231,76,60,.15);color:var(--loss);border-radius:6px;padding:2px 7px;font-weight:600;font-size:11px">${worst.wr}%</span>
+              <span style="color:rgba(245,240,232,.55)">vs ${worstP.name} — lastigst</span>
+            </div>`:''}
+          </div>
+        </div>
+        <div style="color:rgba(245,240,232,.25);font-size:18px">›</div>
       </div>
-      <div class="stat-row"><span>${wn}</span><span style="font-weight:700;color:var(--win)">${m.wWins}× gewonnen (${wWr}%)</span></div>
-      <div class="stat-row"><span>${zn}</span><span style="font-weight:700;color:var(--loss)">${m.zWins}× gewonnen (${Math.round(m.zWins/m.games*100)}%)</span></div>
-      ${m.draws?`<div class="stat-row"><span>Gelijk</span><span>${m.draws}×</span></div>`:''}
+    </div>`;
+  }).filter(Boolean).join('');
+}
+
+function openTegDetail(pid){
+  const p=getPlayer(pid);if(!p) return;
+  const h2h=buildH2H();
+  const myMatchups=Object.values(h2h).filter(d=>d.p1===pid||d.p2===pid).map(d=>{
+    const oppId=d.p1===pid?d.p2:d.p1;
+    const myWins=d.p1===pid?d.p1Wins:d.p2Wins;
+    const oppWins=d.games-myWins-d.draws;
+    const wr=d.games?Math.round(myWins/d.games*100):0;
+    return {oppId,games:d.games,myWins,oppWins,draws:d.draws,wr};
+  }).filter(m=>m.games>0).sort((a,b)=>b.games-a.games||b.wr-a.wr);
+
+  const rows=myMatchups.map(m=>{
+    const opp=getPlayer(m.oppId);if(!opp) return '';
+    const avImg=opp.photo
+      ?`<img src="${opp.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+      :`${opp.name[0].toUpperCase()}`;
+    const barColor=m.wr>=50?'var(--win)':'var(--loss)';
+    return `<div style="padding:12px 0;border-bottom:1px solid rgba(245,240,232,.07)">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <div class="avatar" style="width:36px;height:36px;font-size:14px;flex-shrink:0">${avImg}</div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:14px">${opp.name}</div>
+          <div style="font-size:11px;color:rgba(245,240,232,.4)">${m.games}× tegenover gestaan</div>
+        </div>
+        <div style="font-weight:700;font-size:18px;color:${barColor}">${m.wr}%</div>
+      </div>
+      <div style="background:rgba(255,255,255,.08);border-radius:6px;height:6px;margin-bottom:6px">
+        <div style="background:${barColor};width:${m.wr}%;height:100%;border-radius:6px;transition:width .3s"></div>
+      </div>
+      <div style="display:flex;gap:12px;font-size:11px;color:rgba(245,240,232,.4)">
+        <span style="color:var(--win)">${m.myWins}× gewonnen</span>
+        <span style="color:var(--loss)">${m.oppWins}× verloren</span>
+        ${m.draws?`<span>${m.draws}× gelijk</span>`:''}
+      </div>
     </div>`;
   }).join('');
+
+  document.getElementById('modal-teg-detail-content').innerHTML=`
+    <div class="modal-title">${p.name} — Tegenstanders <span class="modal-close" onclick="closeModal('modal-teg-detail')">✕</span></div>
+    ${rows||'<div style="color:rgba(245,240,232,.4);text-align:center;padding:20px">Nog geen data</div>'}
+  `;
+  openModal('modal-teg-detail');
 }
 
 function renderRecordsStats(){
@@ -1969,8 +2392,8 @@ function renderRecordsStats(){
   const byHighScore=[...active].sort((a,b)=>b.highScore-a.highScore);
   const byGames=[...active].sort((a,b)=>b.games-a.games);
   const byWr=active.filter(p=>p.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games));
-  const byNat=[...active].sort((a,b)=>b.nat-a.nat);
-  const byVerz=[...active].sort((a,b)=>(b.verz||0)-(a.verz||0));
+  const byNat=[...active].sort((a,b)=>(b.natAsMaker||0)-(a.natAsMaker||0));
+  const byVerz=[...active].sort((a,b)=>(b.verzAsMaker||0)-(a.verzAsMaker||0));
   const byPit=[...active].sort((a,b)=>(b.pit||0)-(a.pit||0));
   const byLosses=[...active].sort((a,b)=>b.losses-a.losses);
   const byKaap=[...active].sort((a,b)=>(b.roundsKaap||0)-(a.roundsKaap||0));
@@ -2000,8 +2423,8 @@ function renderRecordsStats(){
     </div>
     <div class="card">
       <div class="card-label">😅 Twijfelachtige records</div>
-      ${row('💧','Vaakst nat',byNat[0],byNat[0]?.nat+'× nat')}
-      ${row('🔵','Vaakst verzaakt',byVerz[0],(byVerz[0]?.verz||0)+'× verzaakt')}
+      ${row('💧','Vaakst nat',byNat[0],(byNat[0]?.natAsMaker||0)+'× nat')}
+      ${row('🔵','Vaakst verzaakt',byVerz[0],(byVerz[0]?.verzAsMaker||0)+'× verzaakt')}
       ${row('💀','Meeste verliespartijen',byLosses[0],byLosses[0]?.losses+'× verloren')}
       ${row('😰','Langste verliesreeks ooit',byLossStreak[0]?.p,byLossStreak[0]?.s+'× op rij verloren')}
       ${byVerspeeld[0]?row('😬','Vaakst overwinning verspeeld',byVerspeeld[0],(verspeeld[byVerspeeld[0].id]||0)+'× voorgestaan maar toch verloren'):''}
@@ -2127,8 +2550,7 @@ function _refreshActiveView(){
   else if(name==='toernooi') renderToernooi();
 }
 
-_client.onUpdate(_api.data.getData,{},(data)=>{
-  if(!data) return;
+function _applyConvexData(data){
   players = data.kj_players ?? [];
   games   = data.kj_games   ?? [];
   tournaments = data.kj_tournaments ?? [];
@@ -2139,13 +2561,33 @@ _client.onUpdate(_api.data.getData,{},(data)=>{
   }
   // current is device-lokaal: welke tafel bekijkt dit apparaat?
   const viewId = localStorage.getItem('kj_viewing_id');
-  current = viewId ? (games.find(g=>String(g.id)===viewId&&g.active)||null) : null;
+  const fromConvex = viewId ? (games.find(g=>String(g.id)===viewId&&g.active)||null) : null;
+  if(fromConvex){
+    current = fromConvex;
+    _localGamePending = null;
+  } else if(_localGamePending && viewId === _localGamePending && current){
+    if(!games.find(g=>String(g.id)===_localGamePending)) games.push(current);
+  } else if(!_localGamePending){
+    current = fromConvex;
+  }
+  if(_localGamePending && !current) _localGamePending = null;
   _convexReady = true;
   _refreshActiveView();
-});
+  // Verberg laadscherm zodra data binnenkomt
+  const loader=document.getElementById('app-loading');
+  if(loader){loader.style.opacity='0';setTimeout(()=>loader.remove(),400);}
+}
 
-// Fallback: toon laadscherm tot data binnenkomt
-document.getElementById('app-loading')?.remove();
+_client.onUpdate(_api.data.getData,{},(data)=>{
+  if(!data) return;
+  // Blokkeer overschrijven van lokale state terwijl een save in-flight is
+  // (voorkomt "replay" effect waarbij Convex oude data terugstuurt)
+  if(_savePending>0){
+    _pendingConvexData=data; // Buffer — wordt toegepast zodra save klaar is
+    return;
+  }
+  _applyConvexData(data);
+});
 
 
 // ══════════════════════════════════════════
@@ -2323,6 +2765,7 @@ Object.assign(window,{
   renderGame,
   clampAndCalc,
   addRoem,
+  clearRoem,
   getTeamForPlayer,
   getAutoNatSpecial,
   refreshRoundAutoSpecial,
@@ -2359,12 +2802,17 @@ Object.assign(window,{
   getDuoKey,
   renderDuoStats,
   renderTegStats,
+  openTegDetail,
   renderRecordsStats,
   renderHome,
   recalcPlayerStats,
-  toggleBenchSection,
+  addBenchSlot,
   openWisselModal,
   confirmWissel,
+  openVolgordeModal,
+  swapVolgorde,
+  openRemovePlayerModal,
+  confirmRemovePlayer,
   openAddPlayerToGameModal,
   onAddGamePlayerSelect,
   confirmAddPlayerToGame,

@@ -202,6 +202,7 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
 #jagen-toast.show{opacity:1;transform:translate(-50%,-50%) scale(1)}
 
 /* ANIMATIONS */
+@keyframes kj-dot{0%,80%,100%{transform:scale(0.6);opacity:.4}40%{transform:scale(1);opacity:1}}
 @keyframes splash{0%{transform:scale(0) rotate(-20deg);opacity:0}50%{transform:scale(1.2);opacity:1}100%{transform:scale(1);opacity:1}}
 @keyframes droplets{0%{transform:translateY(0);opacity:1}100%{transform:translateY(60px);opacity:0}}
 @keyframes boom{0%{transform:scale(0);opacity:0}40%{transform:scale(1.3)}100%{transform:scale(1);opacity:1}}
@@ -268,6 +269,21 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
   <div id="access-error" style="color:#e74c3c;font-size:13px;margin-top:12px;display:none">Onjuiste code. Probeer opnieuw.</div>
 </div>
 
+<!-- ══ LAADSCHERM ══ -->
+<div id="app-loading" style="position:fixed;inset:0;z-index:9998;background:var(--green);
+  background-image:radial-gradient(ellipse at 30% 30%,rgba(45,122,79,.6),transparent 65%);
+  display:flex;align-items:center;justify-content:center;flex-direction:column;gap:20px;
+  transition:opacity .4s ease">
+  <div style="font-family:'Playfair Display',serif;font-size:42px;font-weight:900;color:var(--gold)">♣</div>
+  <div style="font-family:'Playfair Display',serif;font-size:26px;font-weight:700;color:var(--cream)">Klaverjas</div>
+  <div style="display:flex;gap:6px;margin-top:8px">
+    <span style="width:8px;height:8px;border-radius:50%;background:var(--gold);opacity:.9;animation:kj-dot 1.2s ease-in-out infinite"></span>
+    <span style="width:8px;height:8px;border-radius:50%;background:var(--gold);opacity:.9;animation:kj-dot 1.2s ease-in-out .2s infinite"></span>
+    <span style="width:8px;height:8px;border-radius:50%;background:var(--gold);opacity:.9;animation:kj-dot 1.2s ease-in-out .4s infinite"></span>
+  </div>
+  <div style="font-size:13px;color:rgba(245,240,232,.4);margin-top:4px">Data ophalen...</div>
+</div>
+
 <div class="header">
   <div class="logo">♣ <span>Klaverjas</span></div>
   <button id="btn-sound-toggle" onclick="toggleSound()" style="background:none;border:none;cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7" title="Geluid aan/uit">🔔</button>
@@ -308,6 +324,9 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
   <div id="uitbeurt-bar" class="uitbeurt-bar" style="display: flex;">
     <span>🎯 Uitbeurt: <span id="uitbeurt-name" class="uitbeurt-name">Ferry</span> <span id="uitbeurt-team-tag" style="font-size:11px;font-weight:600;margin-left:4px"></span></span>
     <span id="uitbeurt-ronde" style="font-size:11px;color:rgba(245,240,232,.4)">Blaadje 16</span>
+  </div>
+  <div id="dealer-bar" style="display:none;padding:3px 16px;font-size:11px;color:rgba(245,240,232,.4);background:rgba(0,0,0,.12);border-bottom:1px solid rgba(201,168,76,.08)">
+    🃏 Deler: <span id="dealer-name"></span>
   </div>
   <div id="wissel-bar" style="display:none;padding:6px 16px;background:rgba(201,168,76,.08);border-bottom:1px solid rgba(201,168,76,.12);display:flex;gap:8px">
     <button id="btn-wissel-speler" class="btn btn-ghost" style="width:auto;padding:5px 14px;font-size:12px;display:none" onclick="openWisselModal()">🔄 Wissel</button>
@@ -652,13 +671,10 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
     <label>Team "Zij" — Speler 2</label><select id="sel-zij1"><option value="1774347734011">Tim</option><option value="1774347739459">Jason</option><option value="1774347754503">Marc</option><option value="1774347760453">Ferry</option><option value="1774374515254">Lucash</option></select>
     <label>Team "Wij" — Speler 3</label><select id="sel-wij2"><option value="1774347734011">Tim</option><option value="1774347739459">Jason</option><option value="1774347754503">Marc</option><option value="1774347760453">Ferry</option><option value="1774374515254">Lucash</option></select>
     <label>Team "Zij" — Speler 4</label><select id="sel-zij2"><option value="1774347734011">Tim</option><option value="1774347739459">Jason</option><option value="1774347754503">Marc</option><option value="1774347760453">Ferry</option><option value="1774374515254">Lucash</option></select>
-    <button type="button" id="btn-toggle-bench" class="btn btn-ghost" style="margin:6px 0 2px;font-size:12px" onclick="toggleBenchSection()">+ Wisselspelers toevoegen</button>
-    <div id="bench-section" style="display:none;margin-top:4px">
-      <div style="font-size:11px;color:var(--gold);font-weight:600;letter-spacing:1px;text-transform:uppercase;margin:6px 0 8px">Bankspelers (optioneel)</div>
-      <label>Team "Wij" — Bankspeler 1</label><select id="sel-wij3"></select>
-      <label>Team "Zij" — Bankspeler 1</label><select id="sel-zij3"></select>
-      <label>Team "Wij" — Bankspeler 2</label><select id="sel-wij4"></select>
-      <label>Team "Zij" — Bankspeler 2</label><select id="sel-zij4"></select>
+    <div id="bench-section" style="margin-top:4px"></div>
+    <div id="bench-add-row" style="display:flex;gap:8px;margin:6px 0 2px">
+      <button type="button" id="btn-add-bench-wij" class="btn btn-ghost" style="flex:1;font-size:12px" onclick="addBenchSlot('wij')">➕ WIJ bankspeler</button>
+      <button type="button" id="btn-add-bench-zij" class="btn btn-ghost" style="flex:1;font-size:12px" onclick="addBenchSlot('zij')">➕ ZIJ bankspeler</button>
     </div>
     <label>Wie begint (eerste uitbeurt)?</label><select id="sel-starter"><option value="1774347734011">Tim</option><option value="1774347739459">Jason</option><option value="1774347754503">Marc</option><option value="1774347760453">Ferry</option></select>
     <button class="btn btn-gold" onclick="startNewGame()">🃏 Boom starten</button>
@@ -732,6 +748,10 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
   <div class="modal" id="modal-game-detail-content"></div>
 </div>
 
+<div class="modal-overlay" id="modal-teg-detail">
+  <div class="modal" id="modal-teg-detail-content"></div>
+</div>
+
 <div class="modal-overlay" id="modal-end-game">
   <div class="modal">
     <div class="modal-title">🏁 Boom beëindigen <span class="modal-close" onclick="closeModal(&#39;modal-end-game&#39;)">✕</span></div>
@@ -756,6 +776,8 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
   <div class="modal">
     <div class="modal-title">✏️ Blaadje aanpassen <span class="modal-close" onclick="closeModal(&#39;modal-edit-round&#39;)">✕</span></div>
     <input type="hidden" id="edit-round-index">
+    <label style="margin-bottom:6px">Wie speelde?</label>
+    <div style="margin-bottom:10px"><select id="edit-speler-select"></select></div>
     <div class="points-row">
       <div>
         <label>Punten Wij</label>
@@ -777,6 +799,22 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
     </div>
     <button class="btn btn-gold" style="margin-bottom:9px" onclick="saveEditedRound()">✓ Opslaan</button>
     <button class="btn btn-ghost" onclick="closeModal(&#39;modal-edit-round&#39;)">Annuleren</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-volgorde">
+  <div class="modal">
+    <div class="modal-title">🔀 Volgorde wisselen <span class="modal-close" onclick="closeModal('modal-volgorde')">✕</span></div>
+    <div id="volgorde-content" style="margin-bottom:16px"></div>
+    <button class="btn btn-ghost" onclick="closeModal('modal-volgorde')">Annuleren</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-remove-player">
+  <div class="modal">
+    <div class="modal-title">🗑 Speler verwijderen <span class="modal-close" onclick="closeModal('modal-remove-player')">✕</span></div>
+    <div id="remove-player-content" style="margin-bottom:16px"></div>
+    <button class="btn btn-ghost" onclick="closeModal('modal-remove-player')">Annuleren</button>
   </div>
 </div>
 
