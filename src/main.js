@@ -106,13 +106,17 @@ function recalcPlayerStats(){
     [...allWijIds,...allZijIds].forEach(pid=>{
       const p=getPlayer(pid);if(!p) return;
       const isWij=allWijIds.includes(pid);
-      p.games++; p.rounds+=g.rounds.length;
+      p.games++;
       if(draw) p.draws++;
       else if((isWij&&wijWon)||(!isWij&&!wijWon)) p.wins++;
       else p.losses++;
-      const myScore=isWij?finalWij:finalZij;
-      p.totalScore+=myScore;
-      if(myScore>p.highScore) p.highScore=myScore;
+      // Punten alleen van voltooide bomen
+      if(g.completed){
+        p.rounds+=g.rounds.length;
+        const myScore=isWij?finalWij:finalZij;
+        p.totalScore+=myScore;
+        if(myScore>p.highScore) p.highScore=myScore;
+      }
       if(isWij){p.nat+=countSp('NAT WIJ');p.verz+=countSp('VERZ WIJ');p.pit+=countSp('PIT WIJ');}
       else{p.nat+=countSp('NAT ZIJ');p.verz+=countSp('VERZ ZIJ');p.pit+=countSp('PIT ZIJ');}
     });
@@ -916,15 +920,61 @@ function openVolgordeModal(){
   const g=current;if(!g) return;
   const so=getSeatOrder(g);
   if(so.length<4) return showToast('Volgorde wissel niet beschikbaar',true);
-  const w1=getPlayer(so[0])?.name||'?', w2=getPlayer(so[2])?.name||'?';
-  const z1=getPlayer(so[1])?.name||'?', z2=getPlayer(so[3])?.name||'?';
+  // Bereken uitkomer en deler
+  const roundIndex=g.rounds.length;
+  const starterIdx=Math.max(0,so.indexOf(Number(g.starter)));
+  const uitIdx=(starterIdx+roundIndex)%4;
+  const dealerIdx=(starterIdx+roundIndex-1+4)%4;
+  // Posities rondom tafel: bottom=0, right=1, top=2, left=3 (W-Z-W-Z)
+  const positions=['bottom','right','top','left'];
+  function seatHTML(seatPos,playerIdx){
+    const pid=so[playerIdx];
+    const p=getPlayer(pid);
+    const name=p?.name||'?';
+    const isWij=playerIdx%2===0;
+    const teamColor=isWij?'#c9a84c':'rgba(245,240,232,.7)';
+    const isUit=playerIdx===uitIdx;
+    const isDealer=playerIdx===dealerIdx;
+    const avatarInner=p?.photo
+      ?`<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+      :`<span style="font-size:18px;font-weight:700;color:var(--green)">${name[0].toUpperCase()}</span>`;
+    const badge=isUit
+      ?`<div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#c9a84c;color:#163d24;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;white-space:nowrap">UITBEURT</div>`
+      :isDealer
+      ?`<div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:rgba(245,240,232,.15);color:rgba(245,240,232,.7);font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;white-space:nowrap">DELER</div>`
+      :'';
+    // Positie op de tafel
+    const posStyle={
+      bottom:'bottom:0;left:50%;transform:translateX(-50%)',
+      top:'top:0;left:50%;transform:translateX(-50%)',
+      left:'left:0;top:50%;transform:translateY(-50%)',
+      right:'right:0;top:50%;transform:translateY(-50%)',
+    }[seatPos];
+    return `<div style="position:absolute;${posStyle};display:flex;flex-direction:column;align-items:center;gap:4px">
+      <div style="position:relative">
+        ${badge}
+        <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,${teamColor},${isWij?'#8b6914':'rgba(180,160,120,.5)'}
+);display:flex;align-items:center;justify-content:center;border:2px solid ${isUit?'#c9a84c':isDealer?'rgba(245,240,232,.3)':'rgba(201,168,76,.2)'};overflow:hidden">${avatarInner}</div>
+      </div>
+      <div style="font-size:11px;font-weight:600;color:${teamColor};max-width:64px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+    </div>`;
+  }
   document.getElementById('volgorde-content').innerHTML=`
-    <p style="font-size:13px;color:rgba(245,240,232,.6);margin-bottom:14px">Wissel de zetelposities binnen hetzelfde team.</p>
+    <div style="position:relative;width:240px;height:240px;margin:0 auto 20px">
+      <!-- Ronde tafel -->
+      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:110px;height:110px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#1e5c34,#0f2d18);border:2px solid rgba(201,168,76,.35);box-shadow:0 0 20px rgba(0,0,0,.4)">
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;opacity:.35">♣</div>
+      </div>
+      ${seatHTML('bottom',0)}
+      ${seatHTML('left',1)}
+      ${seatHTML('top',2)}
+      ${seatHTML('right',3)}
+    </div>
     <button class="btn btn-ghost" style="margin-bottom:10px" onclick="swapVolgorde('wij')">
-      🔀 WIJ: ${w1} ↔ ${w2}
+      🔀 WIJ: ${getPlayer(so[0])?.name||'?'} ↔ ${getPlayer(so[2])?.name||'?'}
     </button>
     <button class="btn btn-ghost" onclick="swapVolgorde('zij')">
-      🔀 ZIJ: ${z1} ↔ ${z2}
+      🔀 ZIJ: ${getPlayer(so[1])?.name||'?'} ↔ ${getPlayer(so[3])?.name||'?'}
     </button>`;
   openModal('modal-volgorde');
 }
@@ -932,13 +982,15 @@ function openVolgordeModal(){
 function swapVolgorde(team){
   const g=current;if(!g) return;
   const so=getSeatOrder(g);
+  // Onthoud de starter-positie (index) vóór de wissel, niet de speler-ID
+  const starterPos=Math.max(0,so.indexOf(Number(g.starter)));
   if(team==='wij'){
-    // WIJ zit op posities 0 en 2 (W-Z-W-Z)
     [so[0],so[2]]=[so[2],so[0]];
   } else {
-    // ZIJ zit op posities 1 en 3
     [so[1],so[3]]=[so[3],so[1]];
   }
+  // Herveranker de starter aan dezelfde positie-index zodat de rotatie intact blijft
+  g.starter=so[starterPos];
   g.seatOrder=so;
   saveAll();closeModal('modal-volgorde');renderGame();
   showToast('✓ Volgorde gewisseld');
@@ -1115,6 +1167,16 @@ function renderGame(){
   document.getElementById('score-zij').textContent=g.scoreZij;
   document.getElementById('roem-wij').textContent=g.roemWij;
   document.getElementById('roem-zij').textContent=g.roemZij;
+  const diffEl=document.getElementById('score-diff');
+  if(diffEl){
+    const diff=g.scoreWij-g.scoreZij;
+    if(diff===0){diffEl.textContent='';diffEl.style.color='';}
+    else{
+      const leader=diff>0?'WIJ':'ZIJ';
+      diffEl.textContent=`+${Math.abs(diff)} ${leader}`;
+      diffEl.style.color=diff>0?'rgba(201,168,76,.7)':'rgba(245,240,232,.5)';
+    }
+  }
   document.getElementById('round-num').textContent=rnd;
   document.getElementById('ronde-progress').textContent=`blaadje ${Math.min(g.rounds.length+1,16)}/16 · takkie ${Math.ceil((g.rounds.length+1)/4)}/4`;
 
@@ -2333,35 +2395,52 @@ function renderRecordsStats(){
     form.results.forEach(r=>{if(r===type){cur++;if(cur>max)max=cur;}else cur=0;});
     return max;
   }
-  function row(icon,label,p,val,extra=''){
-    if(!p) return '';
+  // ps = single player or array; getVal = fn(p)=>numeric for tie detection
+  function row(icon,label,ps,val,extra=''){
+    const arr=Array.isArray(ps)?ps:(ps?[ps]:[]);
+    if(!arr.length||!arr[0]) return '';
+    const avatars=arr.map(p=>av(p)).join('');
+    const names=arr.map(p=>p.name).join(', ');
     return `<div class="stat-row">
       <div style="display:flex;align-items:center;gap:10px">
-        ${av(p)}
+        <div style="display:flex;gap:-6px">${arr.length>1?`<div style="display:flex">${arr.map((p,i)=>`<div style="margin-left:${i?-10:0}px">${av(p)}</div>`).join('')}</div>`:av(arr[0])}</div>
         <div>
           <div style="font-size:13px;font-weight:600">${icon} ${label}</div>
-          <div style="font-size:11px;color:rgba(245,240,232,.4)">${p.name}${extra}</div>
+          <div style="font-size:11px;color:rgba(245,240,232,.4)">${names}${extra}</div>
         </div>
       </div>
       <div style="font-weight:700;color:var(--gold);text-align:right">${val}</div>
     </div>`;
   }
+  // Returns all players tied for first in a sorted array, using getVal to compare
+  function tied(sortedArr,getVal){
+    if(!sortedArr.length) return [];
+    const best=getVal(sortedArr[0]);
+    return sortedArr.filter(p=>getVal(p)===best);
+  }
+  function tiedObj(sortedArr,getVal){
+    // For arrays of {p,s} objects
+    if(!sortedArr.length) return [];
+    const best=getVal(sortedArr[0]);
+    return sortedArr.filter(x=>getVal(x)===best);
+  }
 
   // Grootste comeback: max achterstand op enig moment in gewonnen spel
-  let biggestComeback={pid:null,val:0};
-  // Laagste eindscore
-  let lowestScore={pid:null,val:Infinity};
+  let biggestComeback={team:null,val:0};
+  // Laagste eindscore (alleen voltooide bomen)
+  let lowestScore={team:null,val:Infinity};
   // Vaakst overwinning verspeeld (voorstond halverwege maar verloor)
   const verspeeld={};
-  games.filter(g=>!g.active&&g.rounds.length>=2).forEach(g=>{
+  // Alleen voltooide bomen voor records die boom-uitkomst vereisen
+  games.filter(g=>!g.active&&g.completed&&g.rounds.length>=2).forEach(g=>{
     const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
     const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
     if(fw===fz) return;
     const wijWon=fw>fz;
-    // Laagste score
+    // Laagste eindscore — sla het hele verliezende team op
     const loser=wijWon?fz:fw;
     if(loser<lowestScore.val){
-      lowestScore={pid:(wijWon?g.zij:g.wij)[0],val:loser};
+      lowestScore={team:wijWon?g.zij:g.wij, val:loser};
     }
     // Grootste comeback
     let wR=0,zR=0,maxDeficit=0;
@@ -2371,10 +2450,9 @@ function renderRecordsStats(){
       if(deficit>maxDeficit) maxDeficit=deficit;
     });
     if(maxDeficit>biggestComeback.val){
-      biggestComeback={pid:(wijWon?g.wij:g.zij)[0],val:maxDeficit};
+      biggestComeback={team:wijWon?g.wij:g.zij,val:maxDeficit};
     }
-    // Overwinning verspeeld: alleen tellen als er exact >=8 blaadjes zijn gespeeld
-    // en het team na 2 takkies (8 blaadjes) voor stond maar uiteindelijk verloor
+    // Overwinning verspeeld: alleen voltooide bomen met >=8 blaadjes
     if(g.rounds.length>=8){
       let wH=0,zH=0;
       g.rounds.slice(0,8).forEach(r=>{wH+=r.w+r.rw;zH+=r.z+r.rz;});
@@ -2387,6 +2465,15 @@ function renderRecordsStats(){
   });
 
   const byVerspeeld=[...active].filter(p=>verspeeld[p.id]>0).sort((a,b)=>(verspeeld[b.id]||0)-(verspeeld[a.id]||0));
+
+  // Langste en snelste boom (alleen voltooide spellen met start- en eindtijd)
+  const timedGames=games.filter(g=>!g.active&&g.completed&&g.date&&g.endDate);
+  let longestGame=null,shortestGame=null;
+  timedGames.forEach(g=>{
+    const dur=new Date(g.endDate)-new Date(g.date);
+    if(!longestGame||dur>longestGame.dur) longestGame={g,dur};
+    if(!shortestGame||dur<shortestGame.dur) shortestGame={g,dur};
+  });
 
   const byWins=[...active].sort((a,b)=>b.wins-a.wins);
   const byHighScore=[...active].sort((a,b)=>b.highScore-a.highScore);
@@ -2409,26 +2496,51 @@ function renderRecordsStats(){
       ${koud.map(p=>{const f=getPlayerForm(p.id);return row('😰','Tegenvallende reeks',p,`${f.streak}× op rij verloren`);}).join('')}
     </div>`:'';
 
-  return trendsHTML+`
+  function gameRow(icon, label, entry){
+    if(!entry) return '';
+    const {g, dur}=entry;
+    const d=new Date(g.date).toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
+    const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
+    const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
+    const wijNames=g.wij.map(id=>getPlayer(id)?.name||'?').join(' & ');
+    const zijNames=g.zij.map(id=>getPlayer(id)?.name||'?').join(' & ');
+    return `<div class="stat-row">
+      <div>
+        <div style="font-size:13px;font-weight:600">${icon} ${label}</div>
+        <div style="font-size:11px;color:rgba(245,240,232,.4)">${d} · ${wijNames} vs ${zijNames}</div>
+        <div style="font-size:11px;color:rgba(245,240,232,.35)">${fw} – ${fz} · ${g.rounds.length} blaadjes</div>
+      </div>
+      <div style="font-weight:700;color:var(--gold);text-align:right;white-space:nowrap">${formatDuration(dur)}</div>
+    </div>`;
+  }
+
+  const boomRecordsHTML=(longestGame||shortestGame)?`
+    <div class="card">
+      <div class="card-label">⏱ Boom records</div>
+      ${gameRow('🐌','Langste boom',longestGame)}
+      ${gameRow('⚡','Snelste boom',shortestGame)}
+    </div>`:'';
+
+  return boomRecordsHTML+`
     <div class="card">
       <div class="card-label">🏅 Erelijst</div>
-      ${row('🏆','Meeste overwinningen',byWins[0],byWins[0]?.wins+'× gewonnen')}
-      ${row('⭐','Hoogste score ooit',byHighScore[0],byHighScore[0]?.highScore+' punten')}
-      ${row('📈','Beste winrate',byWr[0],byWr[0]?Math.round(byWr[0].wins/byWr[0].games*100)+'%':'—',' (min. 2 bomen)')}
-      ${row('🎮','Meest actief',byGames[0],byGames[0]?.games+' bomen gespeeld')}
-      ${row('🔥','Langste winststreek ooit',byWinStreak[0]?.p,byWinStreak[0]?.s+'× op rij')}
-      ${row('💥','Meeste pits',byPit[0],(byPit[0]?.pit||0)+'× pit')}
-      ${row('🦅','Vaakst gekaapt',byKaap[0],(byKaap[0]?.roundsKaap||0)+'× andermans beurt gepakt')}
-      ${biggestComeback.pid?row('📈','Grootste comeback',getPlayer(biggestComeback.pid),'+'+biggestComeback.val+' punten achterstand omgebogen'):''}
+      ${row('🏆','Meeste overwinningen',tied(byWins,p=>p.wins),tied(byWins,p=>p.wins)[0]?.wins+'× gewonnen')}
+      ${row('⭐','Hoogste score ooit',tied(byHighScore,p=>p.highScore),tied(byHighScore,p=>p.highScore)[0]?.highScore+' punten')}
+      ${row('📈','Beste winrate',tied(byWr,p=>p.wins/p.games).slice(0,3),byWr[0]?Math.round(byWr[0].wins/byWr[0].games*100)+'%':'—',' (min. 2 bomen)')}
+      ${row('🎮','Meest actief',tied(byGames,p=>p.games),tied(byGames,p=>p.games)[0]?.games+' bomen gespeeld')}
+      ${(()=>{const t=tiedObj(byWinStreak,x=>x.s);return row('🔥','Langste winststreek ooit',t.map(x=>x.p),t[0]?.s+'× op rij');})()}
+      ${row('💥','Meeste pits',tied(byPit,p=>p.pit||0),(byPit[0]?.pit||0)+'× pit')}
+      ${row('🦅','Vaakst gekaapt',tied(byKaap,p=>p.roundsKaap||0),(byKaap[0]?.roundsKaap||0)+'× andermans beurt gepakt')}
+      ${biggestComeback.team?row('📈','Grootste comeback',biggestComeback.team.map(getPlayer).filter(Boolean),'+'+biggestComeback.val+' punten achterstand omgebogen'):''}
     </div>
     <div class="card">
       <div class="card-label">😅 Twijfelachtige records</div>
-      ${row('💧','Vaakst nat',byNat[0],(byNat[0]?.natAsMaker||0)+'× nat')}
-      ${row('🔵','Vaakst verzaakt',byVerz[0],(byVerz[0]?.verzAsMaker||0)+'× verzaakt')}
-      ${row('💀','Meeste verliespartijen',byLosses[0],byLosses[0]?.losses+'× verloren')}
-      ${row('😰','Langste verliesreeks ooit',byLossStreak[0]?.p,byLossStreak[0]?.s+'× op rij verloren')}
-      ${byVerspeeld[0]?row('😬','Vaakst overwinning verspeeld',byVerspeeld[0],(verspeeld[byVerspeeld[0].id]||0)+'× voorgestaan maar toch verloren'):''}
-      ${lowestScore.pid?row('📉','Laagste eindscore',getPlayer(lowestScore.pid),lowestScore.val+' punten'):''}
+      ${row('💧','Vaakst nat',tied(byNat,p=>p.natAsMaker||0),(byNat[0]?.natAsMaker||0)+'× nat')}
+      ${row('🔵','Vaakst verzaakt',tied(byVerz,p=>p.verzAsMaker||0),(byVerz[0]?.verzAsMaker||0)+'× verzaakt')}
+      ${row('💀','Meeste verliespartijen',tied(byLosses,p=>p.losses),tied(byLosses,p=>p.losses)[0]?.losses+'× verloren')}
+      ${(()=>{const t=tiedObj(byLossStreak,x=>x.s);return row('😰','Langste verliesreeks ooit',t.map(x=>x.p),t[0]?.s+'× op rij verloren');})()}
+      ${byVerspeeld[0]?row('😬','Vaakst overwinning verspeeld',byVerspeeld.filter(p=>(verspeeld[p.id]||0)===(verspeeld[byVerspeeld[0].id]||0)),(verspeeld[byVerspeeld[0].id]||0)+'× voorgestaan maar toch verloren'):''}
+      ${lowestScore.team?row('📉','Laagste eindscore',lowestScore.team.map(getPlayer).filter(Boolean),lowestScore.val+' punten'):''}
     </div>
     ${(()=>{
       // Duo records
@@ -2732,7 +2844,28 @@ function deleteTournament(id){
 
 // Expose functions voor HTML onclick handlers
 Object.assign(window,{
-  _dbg:()=>games,
+  _dbg:()=>({games,players}),
+  _fixUitIds:()=>{
+    // Herberekent uitId voor elke ronde op basis van seatOrder + starter
+    let fixed=0;
+    games.forEach(g=>{
+      if(!g.starter||!g.seatOrder?.length) return;
+      const so=g.seatOrder;
+      const starterIdx=Math.max(0,so.indexOf(Number(g.starter)));
+      g.rounds.forEach((r,i)=>{
+        const correctUitId=so[(starterIdx+i)%so.length];
+        if(String(r.uitId)!==String(correctUitId)){
+          console.log(`Game ${g.id} ronde ${i}: uitId ${r.uitId}→${correctUitId} (speler ${r.spelId})`);
+          r.uitId=correctUitId;
+          fixed++;
+        }
+      });
+    });
+    console.log(`✓ ${fixed} ronden gecorrigeerd`);
+    saveAll();
+    recalcPlayerStats();
+    return fixed;
+  },
   switchView,
   showToast,
   openModal,

@@ -321,12 +321,14 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
     <button class="btn btn-ghost" onclick="openLatestFinishedGameForEdit()">✏️ Pas laatste boom aan</button>
   </div>
   <div id="game-active-state" style="display: none;">
-  <div id="uitbeurt-bar" class="uitbeurt-bar" style="display: flex;">
-    <span>🎯 Uitbeurt: <span id="uitbeurt-name" class="uitbeurt-name">Ferry</span> <span id="uitbeurt-team-tag" style="font-size:11px;font-weight:600;margin-left:4px"></span></span>
-    <span id="uitbeurt-ronde" style="font-size:11px;color:rgba(245,240,232,.4)">Blaadje 16</span>
-  </div>
-  <div id="dealer-bar" style="display:none;padding:3px 16px;font-size:11px;color:rgba(245,240,232,.4);background:rgba(0,0,0,.12);border-bottom:1px solid rgba(201,168,76,.08)">
-    🃏 Deler: <span id="dealer-name"></span>
+  <div id="uitbeurt-bar" class="uitbeurt-bar" style="display: flex; flex-direction:column; gap:2px; align-items:stretch;">
+    <div style="display:flex;align-items:center;justify-content:space-between">
+      <span>🎯 Uitbeurt: <span id="uitbeurt-name" class="uitbeurt-name">Ferry</span> <span id="uitbeurt-team-tag" style="font-size:11px;font-weight:600;margin-left:4px"></span></span>
+      <span id="uitbeurt-ronde" style="font-size:11px;color:rgba(245,240,232,.4)">Blaadje 16</span>
+    </div>
+    <div id="dealer-bar" style="display:none;font-size:11px;color:rgba(245,240,232,.45)">
+      🃏 Deler: <span id="dealer-name"></span>
+    </div>
   </div>
   <div id="wissel-bar" style="display:none;padding:6px 16px;background:rgba(201,168,76,.08);border-bottom:1px solid rgba(201,168,76,.12);display:flex;gap:8px">
     <button id="btn-wissel-speler" class="btn btn-ghost" style="width:auto;padding:5px 14px;font-size:12px;display:none" onclick="openWisselModal()">🔄 Wissel</button>
@@ -343,7 +345,10 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
         <div class="score-number" id="score-wij">1782</div>
         <div class="score-roem">roem: <span id="roem-wij">0</span></div>
       </div>
-      <div class="score-vs">VS</div>
+      <div class="score-vs" style="display:flex;flex-direction:column;align-items:center;gap:2px">
+        <span>VS</span>
+        <span id="score-diff" style="font-size:16px;font-weight:700;letter-spacing:.5px;white-space:nowrap"></span>
+      </div>
       <div class="score-team">
         <div style="font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin-bottom:2px;opacity:.7">Zij</div>
         <div class="score-label" id="zij-label">Jason &amp; Ferry</div>
