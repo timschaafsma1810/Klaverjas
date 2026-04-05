@@ -87,6 +87,8 @@ function recalcPlayerStats(){
   players.forEach(p=>{
     p.games=0; p.wins=0; p.losses=0; p.draws=0;
     p.rounds=0; p.totalScore=0; p.highScore=0;
+    p.totalCardScore=0; p.totalRoemScore=0;
+    p.totalPointDiff=0;
     p.nat=0; p.verz=0; p.pit=0;
     p.natAsMaker=0; p.pitAsMaker=0; p.verzAsMaker=0;
     p.roundsPlayed=0; p.roundsKaap=0;
@@ -107,6 +109,7 @@ function recalcPlayerStats(){
       const p=getPlayer(pid);if(!p) return;
       const isWij=allWijIds.includes(pid);
       p.games++;
+      p.totalPointDiff+=(isWij?finalWij:finalZij)-(isWij?finalZij:finalWij);
       if(draw) p.draws++;
       else if((isWij&&wijWon)||(!isWij&&!wijWon)) p.wins++;
       else p.losses++;
@@ -116,6 +119,13 @@ function recalcPlayerStats(){
         const myScore=isWij?finalWij:finalZij;
         p.totalScore+=myScore;
         if(myScore>p.highScore) p.highScore=myScore;
+        g.rounds.forEach(r=>{
+          const award=getRoundAward(g,r);
+          const card=isWij?(award.w-award.roemWij):(award.z-award.roemZij);
+          const roem=isWij?award.roemWij:award.roemZij;
+          p.totalCardScore+=Math.max(0,card);
+          p.totalRoemScore+=Math.max(0,roem);
+        });
       }
       if(isWij){p.nat+=countSp('NAT WIJ');p.verz+=countSp('VERZ WIJ');p.pit+=countSp('PIT WIJ');}
       else{p.nat+=countSp('NAT ZIJ');p.verz+=countSp('VERZ ZIJ');p.pit+=countSp('PIT ZIJ');}
@@ -162,18 +172,23 @@ function _scrollTop(){
   document.body.scrollTop=0;
 }
 function switchView(name, pushHistory=true){
+  const origName=name;
+  // Spelers-tab is samengevoegd in de Stats-view
+  if(name==='players'){statsFilter='spelers';name='stats';}
   const already=document.getElementById('view-'+name)?.classList.contains('active');
   if(!already){
     document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
-    document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
     const viewEl=document.getElementById('view-'+name);
-    const navEl=document.getElementById('nav-'+name);
     if(viewEl) viewEl.classList.add('active');
-    if(navEl) navEl.classList.add('active');
-    if(pushHistory) history.pushState({view:name},'','/'+name);
+    if(pushHistory) history.pushState({view:origName},'','/'+origName);
   }
-  if(name==='home') renderHome();
-  if(name==='players') renderPlayers();
+  // Altijd nav-highlight bijwerken (ook bij al-actieve view, bv. wisselen tussen tabs)
+  document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+  // players is samengevoegd in stats — highlight nav-stats
+  const navId=origName==='players'?'stats':origName;
+  const navEl=document.getElementById('nav-'+navId);
+  if(navEl) navEl.classList.add('active');
+  if(origName==='home') renderHome();
   if(name==='history') renderHistory();
   if(name==='game') renderGame();
   if(name==='stats') renderStats();
@@ -475,7 +490,7 @@ function addPlayer(){
   if(players.find(p=>p.name.toLowerCase()===name.toLowerCase())) return showToast('Naam bestaat al',true);
   players.push({id:Date.now(),name,created:new Date().toISOString(),photo:null,
     games:0,wins:0,losses:0,draws:0,nat:0,verz:0,pit:0,
-    totalScore:0,highScore:0,rounds:0,roundsPlayed:0,roundsKaap:0});
+    totalScore:0,totalCardScore:0,totalRoemScore:0,highScore:0,rounds:0,roundsPlayed:0,roundsKaap:0});
   saveAll();
   document.getElementById('inp-player-name').value='';
   closeModal('modal-add-player');
@@ -524,6 +539,19 @@ function renderPlayers(){
   }).join('');
 }
 
+// Geeft alle spelers die daadwerkelijk hebben meegespeeld voor een team,
+// inclusief wisselspelers die erin zijn gekomen.
+function getGameTeamIds(g, team){
+  const isWij=team==='wij';
+  const starters=isWij?g.wij:g.zij;
+  const bench=isWij?(g.wijBench||[]):(g.zijBench||[]);
+  const everIn=new Set((g.wisselingen||[]).map(w=>isWij?w.wijIn:w.zijIn).filter(Boolean));
+  return [...new Set([...starters,...bench.filter(id=>everIn.has(id))])];
+}
+function getGameTeamNames(g, team){
+  return getGameTeamIds(g,team).map(id=>getPlayer(id)?.name||'?').join(' & ');
+}
+
 // ══════════════════════════════════════════
 //  FORM & TREND HELPER
 // ══════════════════════════════════════════
@@ -569,9 +597,11 @@ function openProfile(id){
   const p=getPlayer(id);if(!p) return;
   const wr=p.games?Math.round(p.wins/p.games*100):0;
   const avg=p.rounds?Math.round(p.totalScore/p.rounds):0;
+  const avgCard=p.rounds?Math.round((p.totalCardScore||0)/p.rounds):0;
+  const avgRoem=p.rounds?Math.round((p.totalRoemScore||0)/p.rounds):0;
   const since=new Date(p.created).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
-  const kaapPct=p.roundsPlayed?Math.round(p.roundsKaap/p.roundsPlayed*100):0;
-  const spelPct= p.rounds>0 && current? Math.round(p.roundsPlayed/p.rounds*100):0;
+  const kaapCount=p.roundsKaap||0;
+  const spelPct=p.rounds>0?Math.round(p.roundsPlayed/p.rounds*100):0;
   const pg=games.filter(g=>[...g.wij,...(g.wijBench||[]),...g.zij,...(g.zijBench||[])].includes(p.id)).slice(-5).reverse();
   const avImg=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p.name[0].toUpperCase()}`;
   const form=getPlayerForm(p.id);
@@ -606,34 +636,26 @@ function openProfile(id){
     </div>
 
     <div class="stat-grid" style="margin-bottom:10px">
-      <div class="stat-box"><div class="stat-value">${p.games}</div><div class="stat-label">🎮 Bomen</div></div>
+      <div class="stat-box"><div class="stat-value">${p.games}</div><div class="stat-label">🌳 Bomen</div></div>
       <div class="stat-box"><div class="stat-value" style="color:var(--win)">${p.wins}</div><div class="stat-label">🏆 Gewonnen</div></div>
       <div class="stat-box"><div class="stat-value" style="color:var(--loss)">${p.losses}</div><div class="stat-label">💀 Verloren</div></div>
       <div class="stat-box"><div class="stat-value">${wr}%</div><div class="stat-label">📈 Winrate</div></div>
-    </div>
-
-    <div class="stat-grid" style="margin-bottom:10px">
-      <div class="stat-box">
-        <div class="stat-value" style="color:#e74c3c">${p.natAsMaker||0}</div>
-        <div class="stat-label">💧 Keer nat</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-value" style="color:#3498db">${p.verzAsMaker||0}</div>
-        <div class="stat-label">🔵 Keer verzaakt</div>
-      </div>
+      <div class="stat-box"><div class="stat-value" style="color:#e74c3c">${p.natAsMaker||0}</div><div class="stat-label">💧 Keer nat</div></div>
+      <div class="stat-box"><div class="stat-value" style="color:#3498db">${p.verzAsMaker||0}</div><div class="stat-label">🔵 Keer verzaakt</div></div>
       <div class="stat-box"><div class="stat-value">${p.highScore}</div><div class="stat-label">⭐ Hoogste score</div></div>
-    </div>
-    <div class="stat-grid" style="margin-bottom:10px">
-      <div class="stat-box"><div class="stat-value">${avg}</div><div class="stat-label">📊 Gem./ronde</div></div>
-      <div class="stat-box"><div class="stat-value">${p.rounds}</div><div class="stat-label">🔄 Blaadjes</div></div>
-      <div class="stat-box"><div class="stat-value">${p.roundsPlayed||0}</div><div class="stat-label">🎴 Keer gespeeld</div></div>
-      <div class="stat-box" title="% van gespeelde beurten waarbij iemand anders uitbeurt had"><div class="stat-value">${kaapPct}%</div><div class="stat-label">🦅 Gekaapt</div></div>
+      <div class="stat-box"><div class="stat-value">${avg}</div><div class="stat-label">📊 Gem. per ronde</div></div>
+      <div class="stat-box"><div class="stat-value">${avgCard}</div><div class="stat-label">🃏 Gem. kaart</div></div>
+      <div class="stat-box"><div class="stat-value">${avgRoem}</div><div class="stat-label">🌟 Gem. roem</div></div>
+      <div class="stat-box" title="Aantal keer dat jij maakte terwijl het niet jouw uitbeurt was"><div class="stat-value">${kaapCount}</div><div class="stat-label">🦅 Keer gekaapd</div></div>
+      <div class="stat-box"><div class="stat-value">${p.rounds}</div><div class="stat-label">📄 Blaadjes</div></div>
+      <div class="stat-box"><div class="stat-value">${p.roundsPlayed||0}</div><div class="stat-label">🎯 Keer maker</div></div>
+      <div class="stat-box" title="% van blaadjes waarbij deze speler de maker was"><div class="stat-value">${spelPct}%</div><div class="stat-label">📊 % Maker</div></div>
     </div>
 
     <div class="card-label" style="margin-bottom:8px">Recente spellen</div>
     ${recentHTML}
     <div style="height:14px"></div>
-    <button class="btn btn-red" onclick="deletePlayerConfirm(${p.id})">Speler verwijderen</button>`;
+    <button class="btn btn-red" onclick="deletePlayerConfirm(${p.id})">Speler uit de app verwijderen</button>`;
   openModal('modal-profile');
 }
 
@@ -771,7 +793,7 @@ function startNewGame(){
   const benchIds=[w3,z3,w4,z4].filter(Boolean);
   const allIds=[...activeIds,...benchIds];
   if(new Set(allIds).size<allIds.length) return showToast('Elke speler mag maar 1x meedoen',true);
-  if(!activeIds.map(String).includes(String(starter))) return showToast('Kies een starter die in dit potje zit',true);
+  if(!activeIds.map(String).includes(String(starter))) return showToast('Kies een starter die in deze boom zit',true);
   const wijBench=[w3,w4].filter(Boolean);
   const zijBench=[z3,z4].filter(Boolean);
   const newGame={id:Date.now(),date:new Date().toISOString(),
@@ -807,7 +829,7 @@ function addBenchSlot(team='wij'){
   const teamLabel=team==='wij'?'Wij':'Zij';
   // Hoeveel slots zijn er al voor dit team?
   const existing=section.querySelectorAll(`select[data-bench-team="${team}"]`).length;
-  if(existing>=2){showToast(`Max 2 bankspelers per team`,true);return;}
+  if(existing>=2){showToast(`Maximaal 2 bankspelers per team`,true);return;}
   const slotNum=existing+1;
   const slotId=`sel-${team}${2+slotNum}`; // sel-wij3/sel-wij4 of sel-zij3/sel-zij4
   const noneOpt=`<option value="">— Geen wisselspeler —</option>`;
@@ -827,13 +849,36 @@ function addBenchSlot(team='wij'){
   updateBenchOptions();
 }
 
+function toggleWisselCard(team){
+  const cb=document.getElementById('cb-'+team+'-wisselt');
+  if(!cb) return;
+  cb.checked=!cb.checked;
+  const on=cb.checked;
+  const fields=document.getElementById('fields-'+team+'-wissel');
+  const card=document.getElementById('card-'+team+'-wissel');
+  const indicator=document.getElementById('toggle-'+team+'-wissel');
+  if(fields) fields.style.display=on?'block':'none';
+  if(indicator){
+    indicator.textContent=on?'✓':'—';
+    indicator.style.background=on?'var(--gold)':'rgba(245,240,232,.15)';
+    indicator.style.color=on?'var(--green)':'rgba(245,240,232,.5)';
+    indicator.style.borderColor=on?'var(--gold)':'rgba(245,240,232,.2)';
+    indicator.style.fontWeight=on?'700':'400';
+  }
+  if(card){
+    card.style.borderColor=on?'rgba(201,168,76,.5)':'rgba(245,240,232,.1)';
+    card.style.background=on?'rgba(201,168,76,.07)':'rgba(0,0,0,.15)';
+    const lbl=card.querySelector('.wissel-team-label');
+    if(lbl) lbl.style.color=on?'var(--gold)':'rgba(245,240,232,.4)';
+  }
+}
+
 function openWisselModal(){
   const g=current;if(!g) return;
   const hasWijBench=(g.wijBench||[]).length>0;
   const hasZijBench=(g.zijBench||[]).length>0;
   if(!hasWijBench&&!hasZijBench) return showToast('Geen wisselspelers beschikbaar',true);
-  let html='';
-  // Bepaal wie nog niet gewisseld is (niet eerder als "in" gekomen) → die staat als standaard
+
   const wijInHistory=(g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean);
   const zijInHistory=(g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean);
   const defaultWijUit=g.wij.find(id=>!wijInHistory.includes(id))??g.wij[0];
@@ -842,35 +887,37 @@ function openWisselModal(){
   function opts(ids,defaultId){
     return ids.map(id=>`<option value="${id}"${id===defaultId?' selected':''}>${getPlayer(id)?.name||'?'}</option>`).join('');
   }
+
+  // Als maar één team bench heeft: die direct open, geen toggle nodig
   const bothHaveBench=hasWijBench&&hasZijBench;
-  if(hasWijBench){
-    html+=`<div style="margin-bottom:14px">
-      ${bothHaveBench?`<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:13px;font-weight:600">
-        <input type="checkbox" id="cb-wij-wisselt" checked style="width:16px;height:16px">
-        Team Wij wisselt ook
-      </label>`:`<div class="card-label">Team Wij — wissel</div>`}
-      <div id="wij-wissel-fields">
-        <label style="font-size:12px;margin-top:6px">Wie gaat eruit?</label>
-        <select id="wissel-wij-uit">${opts(g.wij,defaultWijUit)}</select>
-        <label style="font-size:12px;margin-top:6px">Wie komt erin?</label>
-        <select id="wissel-wij-in">${(g.wijBench||[]).map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
+
+  function teamCard(team,label,hasBench,startIds,benchIds,defaultUit){
+    if(!hasBench) return '';
+    const showToggle=bothHaveBench;
+    const startsOn=true; // standaard altijd aan, afvinken om uit te zetten
+    const toggleHTML=showToggle?`
+      <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;margin-bottom:0;user-select:none" onclick="toggleWisselCard('${team}')">
+        <span class="wissel-team-label" style="font-size:13px;font-weight:700;letter-spacing:.8px;color:var(--gold)">TEAM ${label.toUpperCase()} WISSELT</span>
+        <span id="toggle-${team}-wissel" style="width:34px;height:20px;border-radius:10px;background:var(--gold);color:var(--green);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;transition:all .2s;border:1px solid var(--gold)">✓</span>
+        <input type="checkbox" id="cb-${team}-wisselt" checked style="display:none">
+      </label>`:`
+      <div class="wissel-team-label" style="font-size:12px;font-weight:700;letter-spacing:.8px;color:var(--gold);margin-bottom:8px">TEAM ${label.toUpperCase()} WISSELT</div>`;
+    return `
+    <div id="card-${team}-wissel" style="border:1px solid rgba(201,168,76,.5);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:rgba(201,168,76,.07);transition:all .2s">
+      ${toggleHTML}
+      <div id="fields-${team}-wissel" style="display:block;margin-top:${showToggle?'10px':'0'}">
+        <label style="font-size:12px;color:rgba(245,240,232,.6);margin-top:4px">Wie gaat eruit?</label>
+        <select id="wissel-${team}-uit">${opts(startIds,defaultUit)}</select>
+        <label style="font-size:12px;color:rgba(245,240,232,.6);margin-top:8px">Wie komt erin?</label>
+        <select id="wissel-${team}-in">${benchIds.map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
       </div>
     </div>`;
   }
-  if(hasZijBench){
-    html+=`<div style="margin-bottom:14px">
-      ${bothHaveBench?`<label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer;font-size:13px;font-weight:600">
-        <input type="checkbox" id="cb-zij-wisselt" checked style="width:16px;height:16px">
-        Team Zij wisselt ook
-      </label>`:`<div class="card-label">Team Zij — wissel</div>`}
-      <div id="zij-wissel-fields">
-        <label style="font-size:12px;margin-top:6px">Wie gaat eruit?</label>
-        <select id="wissel-zij-uit">${opts(g.zij,defaultZijUit)}</select>
-        <label style="font-size:12px;margin-top:6px">Wie komt erin?</label>
-        <select id="wissel-zij-in">${(g.zijBench||[]).map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
-      </div>
-    </div>`;
-  }
+
+  const html=
+    teamCard('wij','Wij',hasWijBench,g.wij,g.wijBench||[],defaultWijUit)+
+    teamCard('zij','Zij',hasZijBench,g.zij,g.zijBench||[],defaultZijUit);
+
   document.getElementById('wissel-content').innerHTML=html;
   openModal('modal-wissel');
 }
@@ -880,6 +927,11 @@ function confirmWissel(){
   if(!g.wisselingen) g.wisselingen=[];
   const wisseling={blaadje:g.rounds.length};
   const cbWij=document.getElementById('cb-wij-wisselt');
+  const cbZijCheck=document.getElementById('cb-zij-wisselt');
+  // Beide teams hebben toggle maar geen is aan → waarschuw
+  if(cbWij&&cbZijCheck&&!cbWij.checked&&!cbZijCheck.checked){
+    return showToast('Zet minstens één team aan om te wisselen',true);
+  }
   const wijWisselt=!cbWij||cbWij.checked;
   const wijUitEl=document.getElementById('wissel-wij-uit');
   const wijInEl=document.getElementById('wissel-wij-in');
@@ -919,7 +971,7 @@ function confirmWissel(){
 function openVolgordeModal(){
   const g=current;if(!g) return;
   const so=getSeatOrder(g);
-  if(so.length<4) return showToast('Volgorde wissel niet beschikbaar',true);
+  if(so.length<4) return showToast('Volgorde wisselen niet beschikbaar',true);
   // Bereken uitkomer en deler
   const roundIndex=g.rounds.length;
   const starterIdx=Math.max(0,so.indexOf(Number(g.starter)));
@@ -999,13 +1051,23 @@ function swapVolgorde(team){
 function openRemovePlayerModal(){
   const g=current;if(!g) return;
   const allIds=[...g.wij,...g.zij,...(g.wijBench||[]),...(g.zijBench||[])];
+  // Wie heeft ooit aan tafel gezeten?
   const playedIds=new Set(g.rounds.map(r=>String(r.spelId||r.spelWij||r.spelZij)).filter(Boolean));
-  // Spelers die nooit gespeeld hebben EN verwijdering laat ≥4 spelers over
+  const everIn=new Set([...(g.wisselingen||[]).map(w=>w.wijIn),...(g.wisselingen||[]).map(w=>w.zijIn)].filter(Boolean).map(String));
+  const everOut=new Set([...(g.wisselingen||[]).map(w=>w.wijUit),...(g.wisselingen||[]).map(w=>w.zijUit)].filter(Boolean).map(String));
   const activeCount=g.wij.length+g.zij.length;
   const removable=allIds.filter(pid=>{
-    if(playedIds.has(String(pid))) return false;
-    // Minimaal 4 actieve spelers houden na verwijdering
+    const s=String(pid);
+    // Ooit maker geweest
+    if(playedIds.has(s)) return false;
+    // Ooit ingewisseld (was aan tafel)
+    if(everIn.has(s)) return false;
+    // Ooit uitgewisseld (was originele starter die aan tafel zat)
+    if(everOut.has(s)) return false;
+    // Huidige starter en er zijn al ronden gespeeld (zat aan tafel)
     const isActive=g.wij.includes(pid)||g.zij.includes(pid);
+    if(isActive&&g.rounds.length>0) return false;
+    // Minimaal 4 actieve spelers houden na verwijdering
     if(isActive&&activeCount<=4) return false;
     return true;
   });
@@ -1099,7 +1161,7 @@ function confirmAddPlayerToGame(){
   if(sel==='new'){
     const naam=document.getElementById('add-game-player-name').value.trim();
     if(!naam) return showToast('Voer een naam in',true);
-    const np={id:Date.now(),name:naam,games:0,wins:0,losses:0,draws:0,rounds:0,totalScore:0,highScore:0,nat:0,verz:0,pit:0,natAsMaker:0,pitAsMaker:0,verzAsMaker:0,roundsPlayed:0,roundsKaap:0};
+    const np={id:Date.now(),name:naam,games:0,wins:0,losses:0,draws:0,rounds:0,totalScore:0,totalCardScore:0,totalRoemScore:0,highScore:0,nat:0,verz:0,pit:0,natAsMaker:0,pitAsMaker:0,verzAsMaker:0,roundsPlayed:0,roundsKaap:0};
     players.push(np);pid=np.id;
   } else {
     pid=+sel;if(!pid) return showToast('Kies een speler',true);
@@ -1148,8 +1210,8 @@ function renderGame(){
 
   const g=current;
   if(refreshGameAutoSpecials(g)) recalcGameTotals(g), saveAll();
-  const wn=g.wij.map(id=>getPlayer(id)?.name||'?').join(' & ');
-  const zn=g.zij.map(id=>getPlayer(id)?.name||'?').join(' & ');
+  const wn=getGameTeamNames(g,'wij');
+  const zn=getGameTeamNames(g,'zij');
   const wBench=(g.wijBench||[]).map(id=>getPlayer(id)?.name||'?');
   const zBench=(g.zijBench||[]).map(id=>getPlayer(id)?.name||'?');
   const rnd=Math.min(g.rounds.length+1,16);
@@ -1220,32 +1282,24 @@ function renderGame(){
     wisselBar.style.display='block';
     const wisselBtn=document.getElementById('btn-wissel-speler');
     if(wisselBtn) wisselBtn.style.display=hasBench?'inline-flex':'none';
-    // Volgorde-knop: altijd tonen als er 4+ spelers zijn
-    let volgordeBtn=document.getElementById('btn-volgorde');
-    if(!volgordeBtn){
-      volgordeBtn=document.createElement('button');
-      volgordeBtn.id='btn-volgorde';
-      volgordeBtn.className='btn btn-ghost';
-      volgordeBtn.style.cssText='width:auto;padding:5px 14px;font-size:12px';
-      volgordeBtn.textContent='🔀 Volgorde';
-      volgordeBtn.onclick=openVolgordeModal;
-      wisselBar.appendChild(volgordeBtn);
+    const volgordeBtn=document.getElementById('btn-volgorde');
+    if(volgordeBtn) volgordeBtn.style.display='inline-flex';
+    const removeBtn=document.getElementById('btn-remove-player');
+    if(removeBtn){
+      const allIds=[...g.wij,...g.zij,...(g.wijBench||[]),...(g.zijBench||[])];
+      const playedIds=new Set(g.rounds.map(r=>String(r.spelId||r.spelWij||r.spelZij)).filter(Boolean));
+      const everIn=new Set([...(g.wisselingen||[]).map(w=>w.wijIn),...(g.wisselingen||[]).map(w=>w.zijIn)].filter(Boolean).map(String));
+      const everOut=new Set([...(g.wisselingen||[]).map(w=>w.wijUit),...(g.wisselingen||[]).map(w=>w.zijUit)].filter(Boolean).map(String));
+      const activeCount=g.wij.length+g.zij.length;
+      const hasRemovable=allIds.some(pid=>{
+        const s=String(pid);
+        if(playedIds.has(s)||everIn.has(s)||everOut.has(s)) return false;
+        const isActive=g.wij.includes(pid)||g.zij.includes(pid);
+        if(isActive&&(g.rounds.length>0||activeCount<=4)) return false;
+        return true;
+      });
+      removeBtn.style.display=hasRemovable?'inline-flex':'none';
     }
-    // Verwijder-knop: toon als er verwijderbare spelers zijn
-    let removeBtn=document.getElementById('btn-remove-player');
-    if(!removeBtn){
-      removeBtn=document.createElement('button');
-      removeBtn.id='btn-remove-player';
-      removeBtn.className='btn btn-ghost';
-      removeBtn.style.cssText='width:auto;padding:5px 14px;font-size:12px';
-      removeBtn.textContent='🗑 Eruit';
-      removeBtn.onclick=openRemovePlayerModal;
-      wisselBar.appendChild(removeBtn);
-    }
-    const allIds=[...g.wij,...g.zij,...(g.wijBench||[]),...(g.zijBench||[])];
-    const playedIds=new Set(g.rounds.map(r=>String(r.spelId||r.spelWij||r.spelZij)).filter(Boolean));
-    const hasRemovable=allIds.some(pid=>!playedIds.has(String(pid))&&(g.wij.length+g.zij.length>4||(!g.wij.includes(pid)&&!g.zij.includes(pid))));
-    removeBtn.style.display=hasRemovable?'inline-flex':'none';
   }
 
   const q=[20,50,100];
@@ -1564,7 +1618,7 @@ function checkJagen(g){
     if(n>0&&n%3===0){
       const ids=team==='wij'?[...g.wij,...(g.wijBench||[])]:[...g.zij,...(g.zijBench||[])];
       const namen=ids.map(id=>getPlayer(id)?.name).filter(Boolean);
-      const namenStr=namen.length===2?namen.join(' & '):namen.join(', ');
+      const namenStr=namen.length<=1?namen[0]||'':namen.slice(0,-1).join(', ')+' & '+namen[namen.length-1];
       playAudioFile('/sounds/jagen.mp3');
       setTimeout(()=>showJagenToast('🏹 '+namenStr+' zitten er niet lekker in. Tijd om te jagen!'),600);
       return;
@@ -1867,14 +1921,17 @@ function renderHistory(){
     const scoreZ=g.active?g.scoreZij:g.finalZij;
     const won=scoreW>scoreZ,draw=scoreW===scoreZ;
     const boomTag=g.active?'🔴':g.completed?'🌳':'🌿';
+    const winnerName=won?getGameTeamNames(g,'wij'):getGameTeamNames(g,'zij');
     const statusTag=g.active
       ?`<span class="tag" style="background:rgba(39,174,96,.2);color:#2ecc71">Bezig</span>`
-      :draw?`<span class="tag tag-draw">Gelijk</span>`:won?`<span class="tag tag-win">Wij won</span>`:`<span class="tag tag-loss">Zij won</span>`;
+      :draw?`<span class="tag tag-draw">Gelijk</span>`:won?`<span class="tag tag-win">${winnerName} gewonnen</span>`:`<span class="tag tag-loss">${winnerName} gewonnen</span>`;
     const gameDur=(!g.active&&g.date&&g.endDate)?formatDuration(new Date(g.endDate)-new Date(g.date)):null;
     return `<div class="game-tile">
-      <div class="game-tile-header">
-        <span class="game-date">${d} · ${g.rounds.length} blaadjes ${boomTag}${gameDur?' · ⏱'+gameDur:''}</span>
-        ${statusTag}
+      <div class="game-tile-header" style="flex-direction:column;align-items:flex-start;gap:5px">
+        <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
+          <span class="game-date">${d} · ${g.rounds.length} blaadjes ${boomTag}${gameDur?' · ⏱'+gameDur:''}</span>
+        </div>
+        <div>${statusTag}</div>
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div onclick="${g.active?`openTable('${g.id}')`:`openGameDetail('${g.id}')`}" style="flex:1;cursor:pointer">
@@ -1921,8 +1978,8 @@ function editGameFromHistory(id){
 
 function openGameDetail(id){
   const g=games.find(x=>String(x.id)===String(id));if(!g) return;
-  const wn=g.wij.map(id=>getPlayer(id)?.name||'?').join(' & ');
-  const zn=g.zij.map(id=>getPlayer(id)?.name||'?').join(' & ');
+  const wn=getGameTeamNames(g,'wij');
+  const zn=getGameTeamNames(g,'zij');
   const dateStr=new Date(g.date).toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   const fw=typeof g.finalWij==='number'?g.finalWij:g.scoreWij;
   const fz=typeof g.finalZij==='number'?g.finalZij:g.scoreZij;
@@ -2019,7 +2076,64 @@ function openGameDetail(id){
 // ══════════════════════════════════════════
 //  STATISTICS
 // ══════════════════════════════════════════
-let statsFilter='algemeen';
+let statsFilter='spelers';
+
+function renderSpelersLeaderboard(){
+  if(!players.length){
+    return `<div class="empty"><div class="empty-icon">👥</div><div class="empty-text">Nog geen spelers</div><div class="empty-sub">Voeg spelers toe om te beginnen</div></div>
+      <div style="padding:8px 16px 16px"><button class="btn btn-ghost" onclick="openAddPlayerModal()">+ Nieuwe speler toevoegen</button></div>`;
+  }
+  const medals=['🥇','🥈','🥉'];
+  // Sortering: meeste winsten → beste winrate → gem. puntenverschil
+  const ranked=[...players].sort((a,b)=>{
+    if((b.wins||0)!==(a.wins||0)) return (b.wins||0)-(a.wins||0);
+    const wrA=a.games?(a.wins/a.games):0;
+    const wrB=b.games?(b.wins/b.games):0;
+    if(wrB!==wrA) return wrB-wrA;
+    const dA=a.games?(a.totalPointDiff/a.games):0;
+    const dB=b.games?(b.totalPointDiff/b.games):0;
+    return dB-dA;
+  });
+
+  const rows=ranked.map((p,i)=>{
+    const wr=p.games?Math.round(p.wins/p.games*100):null;
+    const avgDiff=p.games?Math.round(p.totalPointDiff/p.games):null;
+    const diffStr=avgDiff===null?'—':avgDiff>=0?`+${avgDiff}`:`${avgDiff}`;
+    const diffColor=avgDiff===null?'rgba(245,240,232,.35)':avgDiff>0?'var(--win)':avgDiff<0?'#e74c3c':'rgba(245,240,232,.6)';
+    const avImg=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p.name[0].toUpperCase()}`;
+    const form=getPlayerForm(p.id);
+    const rank=i<3?`<span style="font-size:18px">${medals[i]}</span>`:`<span style="font-size:13px;color:rgba(245,240,232,.35);font-weight:700">${i+1}</span>`;
+    const flame=form.streak>=3&&form.streakType==='W'?' 🔥':'';
+    const ice=form.streak>=3&&form.streakType==='V'?' 🥶':'';
+    return `<div class="player-tile" onclick="openProfile(${p.id})" style="padding:12px 16px">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div style="width:26px;text-align:center;flex-shrink:0">${rank}</div>
+        <div class="avatar" style="width:44px;height:44px;font-size:16px;flex-shrink:0">${avImg}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+            <span style="font-weight:700;font-size:15px">${p.name}${flame}${ice}</span>
+            <span style="font-size:13px;font-weight:800;color:var(--gold)">${p.wins}<span style="font-size:10px;font-weight:400;color:rgba(201,168,76,.6)">× gewonnen</span></span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;font-size:11px;color:rgba(245,240,232,.55);margin-bottom:${form.last5.length?'6':'0'}px">
+            <span>📈 ${wr!==null?wr+'%':'—'} winrate</span>
+            <span style="color:${diffColor}">⚔️ gem. ${diffStr} p/boom</span>
+            <span>🌳 ${p.games}× gespeeld</span>
+            <span>💀 ${p.losses}× verloren</span>
+          </div>
+          ${form.last5.length?`<div style="display:flex;gap:3px;align-items:center">
+            <span style="font-size:9px;color:rgba(245,240,232,.3);margin-right:2px">LAATSTE</span>
+            ${formBadges(form.last5)}
+          </div>`:''}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+
+  return `<div style="padding-bottom:4px">${rows}</div>
+    <div style="padding:4px 16px 16px">
+      <button class="btn btn-ghost" onclick="openAddPlayerModal()">+ Nieuwe speler toevoegen</button>
+    </div>`;
+}
 let duoStatsFilter='all';
 
 function renderStats(){
@@ -2027,6 +2141,7 @@ function renderStats(){
   recalcPlayerStats();
   const filterEl=document.getElementById('stats-filter-row');
   const filters=[
+    {k:'spelers',l:'👥 Spelers'},
     {k:'algemeen',l:'📊 Algemeen'},
     {k:'duo',l:'👫 Duo\'s'},
     {k:'tegenstanders',l:'⚔️ vs Tegenstanders'},
@@ -2041,7 +2156,8 @@ function setStatsFilter(f){statsFilter=f;renderStats()}
 function renderStatsContent(){
   const el=document.getElementById('stats-content');
   if(!games.length){el.innerHTML=`<div class="empty"><div class="empty-icon">📊</div><div class="empty-text">Nog geen statistieken</div><div class="empty-sub">Speel eerst een paar bomen!</div></div>`;return}
-  if(statsFilter==='algemeen') el.innerHTML=renderAlgemeenStats();
+  if(statsFilter==='spelers') el.innerHTML=renderSpelersLeaderboard();
+  else if(statsFilter==='algemeen') el.innerHTML=renderAlgemeenStats();
   else if(statsFilter==='duo') el.innerHTML=renderDuoStats();
   else if(statsFilter==='tegenstanders') el.innerHTML=renderTegStats();
   else if(statsFilter==='records') el.innerHTML=renderRecordsStats();
@@ -2056,6 +2172,10 @@ function renderAlgemeenStats(){
   const timedGames=finishedGames.filter(g=>g.completed&&g.date&&g.endDate);
   const avgDurMs=timedGames.length?timedGames.reduce((s,g)=>s+(new Date(g.endDate)-new Date(g.date)),0)/timedGames.length:null;
   const avgDurStr=avgDurMs?formatDuration(avgDurMs):null;
+  const totalDurMs=timedGames.length?timedGames.reduce((s,g)=>s+(new Date(g.endDate)-new Date(g.date)),0):null;
+  const totalDurStr=totalDurMs?formatDuration(totalDurMs):null;
+  const completedFinished=finishedGames.filter(g=>g.completed&&typeof g.finalWij==='number'&&typeof g.finalZij==='number');
+  const avgDiff=completedFinished.length?Math.round(completedFinished.reduce((s,g)=>s+Math.abs(g.finalWij-g.finalZij),0)/completedFinished.length):null;
   let allNat=0,allVerz=0,allPit=0;
   games.forEach(g=>g.rounds.forEach(r=>{if(r.special){if(r.special.includes('NAT'))allNat++;if(r.special.includes('VERZ'))allVerz++;if(r.special.includes('PIT'))allPit++;}}));
   const topScorer=players.sort((a,b)=>b.highScore-a.highScore)[0];
@@ -2066,38 +2186,92 @@ function renderAlgemeenStats(){
       <div class="stat-grid">
         <div class="stat-box"><div class="stat-value">${totGames}</div><div class="stat-label">🌳 Bomen</div></div>
         <div class="stat-box"><div class="stat-value">${totGames?Math.round(completedBomen/totGames*100):0}%</div><div class="stat-label">✅ Volledig</div></div>
-        <div class="stat-box"><div class="stat-value">${totRondes}</div><div class="stat-label">🔄 Rondes</div></div>
-        <div class="stat-box"><div class="stat-value">${avgBlaadjes}</div><div class="stat-label">Gem. blaadjes</div></div>
+        <div class="stat-box"><div class="stat-value">${avgBlaadjes}</div><div class="stat-label">📋 Gem. blaadjes</div></div>
         ${avgDurStr?`<div class="stat-box"><div class="stat-value">${avgDurStr}</div><div class="stat-label">⏱ Gem. speelduur</div></div>`:''}
+        ${totalDurStr?`<div class="stat-box"><div class="stat-value">${totalDurStr}</div><div class="stat-label">🕐 Totale speeltijd</div></div>`:''}
+        ${avgDiff!==null?`<div class="stat-box"><div class="stat-value">${avgDiff}</div><div class="stat-label">⚔️ Gem. puntenverschil</div></div>`:''}
       </div>
     </div>
     <div class="card">
       <div class="card-label">Speciale situaties (totaal)</div>
+      <div style="font-size:11px;color:rgba(245,240,232,.35);margin-bottom:8px">Tik voor details per speler</div>
       <div class="stat-grid">
-        <div class="stat-box"><div class="stat-value" style="color:#e74c3c">${allNat}</div><div class="stat-label">💧 Nat</div></div>
-        <div class="stat-box"><div class="stat-value" style="color:#3498db">${allVerz}</div><div class="stat-label">🔵 Verzaakt</div></div>
-        <div class="stat-box"><div class="stat-value" style="color:#9b59b6">${allPit}</div><div class="stat-label">💥 Pit</div></div>
+        <div class="stat-box" onclick="openSpecialsDetail('nat')" style="cursor:pointer"><div class="stat-value" style="color:#e74c3c">${allNat}</div><div class="stat-label">💧 Nat</div></div>
+        <div class="stat-box" onclick="openSpecialsDetail('verz')" style="cursor:pointer"><div class="stat-value" style="color:#3498db">${allVerz}</div><div class="stat-label">🔵 Verzaakt</div></div>
+        <div class="stat-box" onclick="openSpecialsDetail('pit')" style="cursor:pointer"><div class="stat-value" style="color:#9b59b6">${allPit}</div><div class="stat-label">💥 Pit</div></div>
+        <div class="stat-box" onclick="openSpecialsDetail('kaap')" style="cursor:pointer"><div class="stat-value" style="color:var(--gold)">${players.reduce((s,p)=>s+(p.roundsKaap||0),0)}</div><div class="stat-label">🦅 Gekaapt</div></div>
       </div>
     </div>
-    <div class="card">
-      <div class="card-label">Leaderboard</div>
-      ${players.sort((a,b)=>b.wins-a.wins).map((p,i)=>{
-        const wr=p.games?Math.round(p.wins/p.games*100):0;
-        return `<div class="stat-row">
-          <div style="display:flex;align-items:center;gap:10px">
-            <div style="font-size:16px">${['🥇','🥈','🥉'][i]||'  '}</div>
-            <div>
-              <div style="font-weight:700">${p.name}</div>
-              <div style="font-size:11px;color:rgba(245,240,232,.4)">${p.wins}× gewonnen van ${p.games} bomen</div>
-            </div>
+    `;
+}
+
+function openSpecialsDetail(type){
+  const cfg={
+    nat: {icon:'💧',label:'Nat',getCount:p=>p.natAsMaker||0},
+    verz:{icon:'🔵',label:'Verzaakt',getCount:p=>p.verzAsMaker||0},
+    pit: {icon:'💥',label:'Pit',getCount:p=>p.pitAsMaker||0},
+    kaap:{icon:'🦅',label:'Gekaapt',getCount:p=>p.roundsKaap||0},
+  };
+  const c=cfg[type];if(!c) return;
+
+  function av(p){
+    const inner=p.photo
+      ?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
+      :`${p.name[0].toUpperCase()}`;
+    return `<div class="avatar" style="width:36px;height:36px;font-size:14px;flex-shrink:0">${inner}</div>`;
+  }
+
+  const sorted=players.map(p=>({p,count:c.getCount(p)})).filter(x=>x.count>0).sort((a,b)=>b.count-a.count);
+  const perSpeler=sorted.length
+    ?sorted.map(({p,count})=>`
+      <div class="stat-row">
+        <div style="display:flex;align-items:center;gap:10px">${av(p)}<span style="font-weight:600">${p.name}</span></div>
+        <span style="font-weight:700;color:var(--gold)">${count}×</span>
+      </div>`).join('')
+    :`<div style="color:rgba(245,240,232,.4);font-size:13px;padding:8px 0">Nog geen data</div>`;
+
+  let duoHTML='';
+  if(type==='pit'||type==='nat'||type==='verz'){
+    const tag=type==='pit'?'PIT':type==='nat'?'NAT':'VERZ';
+    const duoCounts={};
+    games.forEach(g=>{
+      g.rounds.forEach((r,i)=>{
+        if(!r.special) return;
+        const sp=r.special.toUpperCase();
+        if(!sp.includes(tag)) return;
+        const isWij=sp.includes(tag+' WIJ')||(!sp.includes(tag+' ZIJ')&&sp.includes(tag));
+        const {wij,zij}=getActiveTeamsAtRound(g,i);
+        const team=isWij?wij:zij;
+        if(team.length>=2){
+          const key=getDuoKey(team[0],team[1]);
+          duoCounts[key]=(duoCounts[key]||0)+1;
+        }
+      });
+    });
+    const duoList=Object.entries(duoCounts).map(([key,count])=>{
+      const [a,b]=key.split('-').map(Number);
+      return {pa:getPlayer(a),pb:getPlayer(b),count};
+    }).filter(x=>x.pa&&x.pb).sort((a,b)=>b.count-a.count);
+    if(duoList.length){
+      duoHTML=`<div class="card-label" style="margin:14px 0 8px">Per duo</div>`
+        +duoList.map(({pa,pb,count})=>`
+        <div class="stat-row">
+          <div style="display:flex;align-items:center;gap:6px">
+            ${av(pa)}<span style="font-size:11px;color:rgba(245,240,232,.4)">+</span>${av(pb)}
+            <span style="font-weight:600;margin-left:4px">${pa.name} & ${pb.name}</span>
           </div>
-          <div style="text-align:right">
-            <div style="font-weight:700;color:var(--gold)">${wr}%</div>
-            <div style="font-size:10px;color:rgba(245,240,232,.35)">winrate</div>
-          </div>
-        </div>`;
-      }).join('')}
-    </div>`;
+          <span style="font-weight:700;color:var(--gold)">${count}×</span>
+        </div>`).join('');
+    }
+  }
+
+  document.getElementById('modal-specials-detail-content').innerHTML=`
+    <div class="modal-title">${c.icon} ${c.label} — details <span class="modal-close" onclick="closeModal('modal-specials-detail')">✕</span></div>
+    <div class="card-label" style="margin-bottom:8px">Per speler</div>
+    ${perSpeler}
+    ${duoHTML}
+    <div style="height:4px"></div>`;
+  openModal('modal-specials-detail');
 }
 
 function getDuoKey(a,b){return [a,b].sort().join('-')}
@@ -2243,7 +2417,7 @@ function renderDuoStats(){
         </div>
         <div class="stat-box">
           <div class="stat-value">${pctSamen}%</div>
-          <div class="stat-label">📅 Van alle potjes</div>
+          <div class="stat-label">📅 Van alle bomen</div>
         </div>
       </div>
       <div class="stat-grid">
@@ -2502,8 +2676,8 @@ function renderRecordsStats(){
     const d=new Date(g.date).toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
     const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
     const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
-    const wijNames=g.wij.map(id=>getPlayer(id)?.name||'?').join(' & ');
-    const zijNames=g.zij.map(id=>getPlayer(id)?.name||'?').join(' & ');
+    const wijNames=getGameTeamNames(g,'wij');
+    const zijNames=getGameTeamNames(g,'zij');
     return `<div class="stat-row">
       <div>
         <div style="font-size:13px;font-weight:600">${icon} ${label}</div>
@@ -2528,7 +2702,7 @@ function renderRecordsStats(){
       ${row('⭐','Hoogste score ooit',tied(byHighScore,p=>p.highScore),tied(byHighScore,p=>p.highScore)[0]?.highScore+' punten')}
       ${row('📈','Beste winrate',tied(byWr,p=>p.wins/p.games).slice(0,3),byWr[0]?Math.round(byWr[0].wins/byWr[0].games*100)+'%':'—',' (min. 2 bomen)')}
       ${row('🎮','Meest actief',tied(byGames,p=>p.games),tied(byGames,p=>p.games)[0]?.games+' bomen gespeeld')}
-      ${(()=>{const t=tiedObj(byWinStreak,x=>x.s);return row('🔥','Langste winststreek ooit',t.map(x=>x.p),t[0]?.s+'× op rij');})()}
+      ${(()=>{const t=tiedObj(byWinStreak,x=>x.s);return row('🔥','Langste winreeks ooit',t.map(x=>x.p),t[0]?.s+'× op rij');})()}
       ${row('💥','Meeste pits',tied(byPit,p=>p.pit||0),(byPit[0]?.pit||0)+'× pit')}
       ${row('🦅','Vaakst gekaapt',tied(byKaap,p=>p.roundsKaap||0),(byKaap[0]?.roundsKaap||0)+'× andermans beurt gepakt')}
       ${biggestComeback.team?row('📈','Grootste comeback',biggestComeback.team.map(getPlayer).filter(Boolean),'+'+biggestComeback.val+' punten achterstand omgebogen'):''}
@@ -2537,7 +2711,7 @@ function renderRecordsStats(){
       <div class="card-label">😅 Twijfelachtige records</div>
       ${row('💧','Vaakst nat',tied(byNat,p=>p.natAsMaker||0),(byNat[0]?.natAsMaker||0)+'× nat')}
       ${row('🔵','Vaakst verzaakt',tied(byVerz,p=>p.verzAsMaker||0),(byVerz[0]?.verzAsMaker||0)+'× verzaakt')}
-      ${row('💀','Meeste verliespartijen',tied(byLosses,p=>p.losses),tied(byLosses,p=>p.losses)[0]?.losses+'× verloren')}
+      ${row('💀','Meeste nederlagen',tied(byLosses,p=>p.losses),tied(byLosses,p=>p.losses)[0]?.losses+'× verloren')}
       ${(()=>{const t=tiedObj(byLossStreak,x=>x.s);return row('😰','Langste verliesreeks ooit',t.map(x=>x.p),t[0]?.s+'× op rij verloren');})()}
       ${byVerspeeld[0]?row('😬','Vaakst overwinning verspeeld',byVerspeeld.filter(p=>(verspeeld[p.id]||0)===(verspeeld[byVerspeeld[0].id]||0)),(verspeeld[byVerspeeld[0].id]||0)+'× voorgestaan maar toch verloren'):''}
       ${lowestScore.team?row('📉','Laagste eindscore',lowestScore.team.map(getPlayer).filter(Boolean),lowestScore.val+' punten'):''}
@@ -2585,13 +2759,13 @@ function renderRecordsStats(){
       const byWr=duos.filter(d=>d.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games));
       const byGames=[...duos].sort((a,b)=>b.games-a.games);
       const byNat=[...duos].sort((a,b)=>b.nat-a.nat);
-      const byVerz=[...duos].sort((a,b)=>b.verz-a.verz);
+      const byPitDuo=[...duos].sort((a,b)=>(b.pit||0)-(a.pit||0));
       return `<div class="card">
         <div class="card-label">🤝 Duo records</div>
         ${drow('🏆','Beste duo',byWr[0]||byGames[0],byWr[0]?Math.round(byWr[0].wins/byWr[0].games*100)+'% winrate':(Math.round((byGames[0]?.wins||0)/(byGames[0]?.games||1)*100)+'% winrate'))}
         ${drow('🎮','Meest samen gespeeld',byGames[0],byGames[0]?.games+' bomen')}
         ${byNat[0]?.nat>0?drow('💧','Vaakst samen nat',byNat[0],byNat[0].nat+'× nat'):''}
-        ${byVerz[0]?.verz>0?drow('🔵','Vaakst samen verzaakt',byVerz[0],byVerz[0].verz+'× verzaakt'):''}
+        ${byPitDuo[0]?.pit>0?drow('💥','Vaakst samen pit',byPitDuo[0],byPitDuo[0].pit+'× pit'):''}
       </div>`;
     })()}`;
 }
@@ -2609,8 +2783,8 @@ function renderHome(){
       tafelsSection.style.display='block';
       const viewId=localStorage.getItem('kj_viewing_id');
       tafelsEl.innerHTML=activeGames.map(g=>{
-        const wn=g.wij.map(id=>getPlayer(id)?.name||'?').join(' & ');
-        const zn=g.zij.map(id=>getPlayer(id)?.name||'?').join(' & ');
+        const wn=getGameTeamNames(g,'wij');
+        const zn=getGameTeamNames(g,'zij');
         const rnd=Math.min(g.rounds.length+1,16);
         const isViewing=String(g.id)===viewId;
         return `<div class="game-tile" onclick="openTable('${g.id}')" style="cursor:pointer;${isViewing?'border-color:var(--gold);border-width:2px':''}">
@@ -2631,14 +2805,15 @@ function renderHome(){
   const recent=[...games].filter(g=>!g.active).reverse().slice(0,5);
   if(!recent.length){el.innerHTML=`<div class="empty"><div class="empty-icon">🃏</div><div class="empty-text">Nog geen spellen gespeeld</div><div class="empty-sub">Druk op "Nieuw spel starten" om te beginnen</div></div>`;return}
   el.innerHTML=recent.map(g=>{
-    const wn=g.wij.map(id=>getPlayer(id)?.name||'?').join(' & ');
-    const zn=g.zij.map(id=>getPlayer(id)?.name||'?').join(' & ');
+    const wn=getGameTeamNames(g,'wij');
+    const zn=getGameTeamNames(g,'zij');
     const d=new Date(g.date).toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
     const won=g.finalWij>g.finalZij,draw=g.finalWij===g.finalZij;
+    const winnerName=won?wn:zn;
     return `<div class="game-tile" onclick="openGameDetail('${g.id}')">
       <div class="game-tile-header">
         <span class="game-date">${d} · ${g.rounds.length} blaadjes ${g.completed?'🌳':'🌿'}</span>
-        ${draw?`<span class="tag tag-draw">Gelijk</span>`:won?`<span class="tag tag-win">Wij won</span>`:`<span class="tag tag-loss">Zij won</span>`}
+        ${draw?`<span class="tag tag-draw">Gelijk</span>`:won?`<span class="tag tag-win">${winnerName} gewonnen</span>`:`<span class="tag tag-loss">${winnerName} gewonnen</span>`}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div><div style="font-size:11px;color:rgba(245,240,232,.5)">${wn} vs ${zn}</div><div class="game-score-big">${g.finalWij} – ${g.finalZij}</div></div>
@@ -2655,7 +2830,7 @@ function _refreshActiveView(){
   const active=document.querySelector('.view.active');
   const name=active?active.id.replace('view-',''):'home';
   if(name==='home') renderHome();
-  else if(name==='players') renderPlayers();
+  else if(name==='players') renderStats(); // players is merged into stats/spelers
   else if(name==='history') renderHistory();
   else if(name==='game') renderGame();
   else if(name==='stats') renderStats();
@@ -2845,27 +3020,6 @@ function deleteTournament(id){
 // Expose functions voor HTML onclick handlers
 Object.assign(window,{
   _dbg:()=>({games,players}),
-  _fixUitIds:()=>{
-    // Herberekent uitId voor elke ronde op basis van seatOrder + starter
-    let fixed=0;
-    games.forEach(g=>{
-      if(!g.starter||!g.seatOrder?.length) return;
-      const so=g.seatOrder;
-      const starterIdx=Math.max(0,so.indexOf(Number(g.starter)));
-      g.rounds.forEach((r,i)=>{
-        const correctUitId=so[(starterIdx+i)%so.length];
-        if(String(r.uitId)!==String(correctUitId)){
-          console.log(`Game ${g.id} ronde ${i}: uitId ${r.uitId}→${correctUitId} (speler ${r.spelId})`);
-          r.uitId=correctUitId;
-          fixed++;
-        }
-      });
-    });
-    console.log(`✓ ${fixed} ronden gecorrigeerd`);
-    saveAll();
-    recalcPlayerStats();
-    return fixed;
-  },
   switchView,
   showToast,
   openModal,
@@ -2883,6 +3037,7 @@ Object.assign(window,{
   addPlayer,
   openAddPlayerModal,
   renderPlayers,
+  renderSpelersLeaderboard,
   openProfile,
   uploadPhoto,
   renamePlayer,
@@ -2940,6 +3095,8 @@ Object.assign(window,{
   renderHome,
   recalcPlayerStats,
   addBenchSlot,
+  openSpecialsDetail,
+  toggleWisselCard,
   openWisselModal,
   confirmWissel,
   openVolgordeModal,

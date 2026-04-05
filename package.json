@@ -12,6 +12,7 @@
     "vite": "^8.0.1"
   },
   "dependencies": {
-    "convex": "^1.34.0"
+    "convex": "^1.34.0",
+    "vercel": "^50.39.0"
   }
 }
