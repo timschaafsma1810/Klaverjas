@@ -2437,71 +2437,123 @@ function renderDuoStats(){
     });
   });
 
-  const entries=Object.values(duos).sort((a,b)=>{
-    const avgA=a.games?a.totalGamePoints/a.games:0;
-    const avgB=b.games?b.totalGamePoints/b.games:0;
-    return avgB-avgA||b.games-a.games;
-  });
-  if(!entries.length) return `<div class="empty"><div class="empty-icon">👫</div><div class="empty-text">Nog geen duo-data</div></div>`;
+  const allEntries=Object.values(duos)
+    .filter(d=>d.games>0&&getPlayer(d.p1)&&getPlayer(d.p2))
+    .sort((a,b)=>{
+      const avgA=a.games?a.totalGamePoints/a.games:0;
+      const avgB=b.games?b.totalGamePoints/b.games:0;
+      return avgB-avgA||b.games-a.games;
+    });
 
-  if(duoStatsFilter!=='all' && !entries.find(d=>d.key===duoStatsFilter)) duoStatsFilter='all';
-  const cards=entries.map(d=>{
+  if(!allEntries.length) return `<div class="empty"><div class="empty-icon">👫</div><div class="empty-text">Nog geen duo-data</div></div>`;
+
+  // Sla duos op voor openPlayerDuos
+  window._duoEntries=allEntries;
+
+  function duoRow(d, rank){
     const p1=getPlayer(d.p1),p2=getPlayer(d.p2);
-    if(!p1||!p2) return '';
-    if(!d.games&&!d.nat&&!d.verz&&!d.pit) return '';
-    const avgPerBoom=d.games?Math.round(d.totalGamePoints/d.games):0;
-    const avgPerBlaadje=d.roundsActive?Math.round(d.pointsInRounds/d.roundsActive):0;
-    // % samen: van alle potjes dat beiden speelden, hoe vaak zaten ze in hetzelfde team?
-    const totalBothInGame=games.filter(g=>{
-      const all=[...g.wij,...(g.wijBench||[]),...g.zij,...(g.zijBench||[])];
-      return all.includes(d.p1)&&all.includes(d.p2);
-    }).length;
-    const pctSamen=totalBothInGame?Math.round(d.games/totalBothInGame*100):0;
-    return `<div class="duo-card">
-      <div class="duo-header">
+    const avg=d.games?Math.round(d.totalGamePoints/d.games):0;
+    const av1=p1.photo?`<img src="${p1.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p1.name[0]}`;
+    const av2=p2.photo?`<img src="${p2.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p2.name[0]}`;
+    return `<div class="stat-row" style="padding:10px 0">
+      <div style="display:flex;align-items:center;gap:10px">
+        ${rank!==undefined?`<span style="font-size:16px;width:24px;text-align:center">${['🥇','🥈','🥉'][rank]||`<span style="font-size:12px;color:rgba(245,240,232,.35)">${rank+1}</span>`}</span>`:''}
         <div style="display:flex">
-          <div class="avatar" style="width:36px;height:36px;font-size:14px">${p1.name[0]}</div>
-          <div class="avatar" style="width:36px;height:36px;font-size:14px;margin-left:-8px">${p2.name[0]}</div>
+          <div class="avatar" style="width:32px;height:32px;font-size:12px">${av1}</div>
+          <div class="avatar" style="width:32px;height:32px;font-size:12px;margin-left:-6px">${av2}</div>
         </div>
         <div>
-          <div class="duo-name">${p1.name} & ${p2.name}</div>
+          <div style="font-weight:600;font-size:14px">${p1.name} & ${p2.name}</div>
+          <div style="font-size:11px;color:rgba(245,240,232,.4)">${d.games}× samen · avg ${avg} p/boom</div>
         </div>
       </div>
-      <div class="stat-grid" style="margin-bottom:10px">
-        <div class="stat-box">
-          <div class="stat-value" style="color:var(--gold)">${avgPerBoom}</div>
-          <div class="stat-label">📊 Gem. per boom</div>
+      <div style="text-align:right">
+        <div style="font-weight:700;color:var(--gold);font-size:15px">${avg}</div>
+        <div style="font-size:10px;color:rgba(245,240,232,.35)">p/boom</div>
+      </div>
+    </div>`;
+  }
+
+  const top5=allEntries.slice(0,5);
+  const bottom5=[...allEntries].reverse().slice(0,5).reverse();
+
+  // Speler-chips: alle spelers die in minstens 1 duo zitten
+  const inDuoIds=new Set(allEntries.flatMap(d=>[d.p1,d.p2]));
+  const duoPlayers=players.filter(p=>inDuoIds.has(p.id)).sort((a,b)=>a.name.localeCompare(b.name));
+  const playerChips=duoPlayers.map(p=>`
+    <button onclick="openPlayerDuos(${p.id})" style="background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.25);color:rgba(245,240,232,.8);border-radius:20px;padding:5px 12px;font-size:12px;cursor:pointer;white-space:nowrap">${p.name}</button>
+  `).join('');
+
+  return `
+    <div class="card">
+      <div class="card-label" style="margin-bottom:10px">🔍 Duo's per speler</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">${playerChips}</div>
+    </div>
+    <div class="card">
+      <div class="card-label" style="margin-bottom:4px">🏆 Top 5 beste duo's</div>
+      <div style="font-size:11px;color:rgba(245,240,232,.35);margin-bottom:8px">Gesorteerd op gem. punten per boom</div>
+      ${top5.map((d,i)=>duoRow(d,i)).join('<div style="height:1px;background:rgba(245,240,232,.06)"></div>')}
+    </div>
+    <div class="card">
+      <div class="card-label" style="margin-bottom:4px">📉 Top 5 slechtste duo's</div>
+      <div style="font-size:11px;color:rgba(245,240,232,.35);margin-bottom:8px">Gesorteerd op gem. punten per boom</div>
+      ${bottom5.map((d,i)=>duoRow(d,allEntries.length-bottom5.length+i)).join('<div style="height:1px;background:rgba(245,240,232,.06)"></div>')}
+    </div>`;
+}
+
+function openPlayerDuos(playerId){
+  const p=getPlayer(playerId);if(!p) return;
+  const allEntries=window._duoEntries||[];
+  const myDuos=allEntries.filter(d=>d.p1===playerId||d.p2===playerId)
+    .sort((a,b)=>{
+      const avgA=a.games?a.totalGamePoints/a.games:0;
+      const avgB=b.games?b.totalGamePoints/b.games:0;
+      return avgB-avgA;
+    });
+
+  const medals=['🥇','🥈','🥉'];
+  const rows=myDuos.map((d,i)=>{
+    const partner=getPlayer(d.p1===playerId?d.p2:d.p1);if(!partner) return '';
+    const avg=d.games?Math.round(d.totalGamePoints/d.games):0;
+    const avgBlaadje=d.roundsActive?Math.round(d.pointsInRounds/d.roundsActive):0;
+    const av=partner.photo?`<img src="${partner.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${partner.name[0]}`;
+    const rank=i<3?medals[i]:`<span style="font-size:12px;color:rgba(245,240,232,.35);font-weight:700">${i+1}</span>`;
+    return `<div style="padding:10px 0;border-bottom:1px solid rgba(245,240,232,.07)">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px">
+        <span style="width:24px;text-align:center;font-size:16px">${rank}</span>
+        <div class="avatar" style="width:36px;height:36px;font-size:14px">${av}</div>
+        <div style="flex:1">
+          <div style="font-weight:600;font-size:14px">${partner.name}</div>
+          <div style="font-size:11px;color:rgba(245,240,232,.4)">${d.games}× samen gespeeld</div>
         </div>
-        <div class="stat-box">
-          <div class="stat-value" style="color:var(--gold)">${avgPerBlaadje}</div>
-          <div class="stat-label">📋 Gem. per blaadje</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${d.games}</div>
-          <div class="stat-label">🤝 Samen in team</div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-value">${pctSamen}%</div>
-          <div class="stat-label">📅 Van alle bomen</div>
+        <div style="text-align:right">
+          <div style="font-weight:700;color:var(--gold);font-size:15px">${avg}</div>
+          <div style="font-size:10px;color:rgba(245,240,232,.35)">p/boom</div>
         </div>
       </div>
-      <div class="stat-grid">
-        <div class="stat-box">
-          <div class="stat-value" style="color:#e74c3c">${d.nat}</div><div class="stat-label">💧 Keer nat</div>
-          ${d.nat>0?`<div style="font-size:10px;color:rgba(245,240,232,.4);margin-top:4px">${p1.name}: ${d.natByP1}× · ${p2.name}: ${d.natByP2}×${d.natUnknown?` · ?: ${d.natUnknown}×`:''}</div>`:''}
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-left:34px">
+        <div style="background:rgba(245,240,232,.05);border-radius:8px;padding:6px;text-align:center">
+          <div style="font-size:13px;font-weight:700;color:var(--gold)">${avgBlaadje}</div>
+          <div style="font-size:9px;color:rgba(245,240,232,.4)">p/blaadje</div>
         </div>
-        <div class="stat-box">
-          <div class="stat-value" style="color:#9b59b6">${d.pit}</div><div class="stat-label">💥 Pit</div>
+        <div style="background:rgba(245,240,232,.05);border-radius:8px;padding:6px;text-align:center">
+          <div style="font-size:13px;font-weight:700;color:#e74c3c">${d.nat}</div>
+          <div style="font-size:9px;color:rgba(245,240,232,.4)">💧 nat</div>
         </div>
-        <div class="stat-box">
-          <div class="stat-value" style="color:#3498db">${d.verz}</div><div class="stat-label">🔵 Verzaakt</div>
-          ${d.verz>0?`<div style="font-size:10px;color:rgba(245,240,232,.4);margin-top:4px">${p1.name}: ${d.verzByP1}× · ${p2.name}: ${d.verzByP2}×${d.verzUnknown?` · ?: ${d.verzUnknown}×`:''}</div>`:''}
+        <div style="background:rgba(245,240,232,.05);border-radius:8px;padding:6px;text-align:center">
+          <div style="font-size:13px;font-weight:700;color:#9b59b6">${d.pit}</div>
+          <div style="font-size:9px;color:rgba(245,240,232,.4)">💥 pit</div>
         </div>
       </div>
     </div>`;
   }).filter(Boolean).join('');
 
-  return cards||`<div class="empty"><div class="empty-icon">👫</div><div class="empty-text">Nog geen duo-data</div></div>`;
+  document.getElementById('modal-specials-detail-content').innerHTML=`
+    <div class="modal-title">👫 Duo's van ${p.name} <span class="modal-close" onclick="closeModal('modal-specials-detail')">✕</span></div>
+    <div style="font-size:11px;color:rgba(245,240,232,.35);margin-bottom:12px">Gesorteerd van beste naar slechtste duo</div>
+    ${rows||`<div style="color:rgba(245,240,232,.4);padding:20px 0;text-align:center">Nog geen duo-data</div>`}
+    <div style="height:8px"></div>`;
+  openModal('modal-specials-detail');
 }
 
 // Bouw individuele head-to-head data: voor elk koppel (p1 vs p2) dat ooit tegenover elkaar stond
@@ -3165,6 +3217,7 @@ Object.assign(window,{
   recalcPlayerStats,
   addBenchSlot,
   openSpecialsDetail,
+  openPlayerDuos,
   toggleWisselCard,
   openWisselModal,
   confirmWissel,
