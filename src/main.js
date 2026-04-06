@@ -2586,7 +2586,7 @@ function openScoreInfo(){
           <span style="font-size:13px;font-weight:700">📊 Gem. kaartpunten/boom</span>
           <span style="font-size:15px;font-weight:800;color:var(--gold)">40%</span>
         </div>
-        <div style="font-size:11px;color:rgba(245,240,232,.4)">Puur kaartpunten per boom (roem apart meegeteld)</div>
+        <div style="font-size:11px;color:rgba(245,240,232,.4)">Puur kaartpunten per boom (zonder roem)</div>
       </div>
       <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:11px 12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
@@ -2600,7 +2600,7 @@ function openScoreInfo(){
           <span style="font-size:13px;font-weight:700">🏆 Totaal winsten</span>
           <span style="font-size:15px;font-weight:800;color:var(--gold)">10%</span>
         </div>
-        <div style="font-size:11px;color:rgba(245,240,232,.4)">Absoluut aantal gewonnen bomen (beloont volume)</div>
+        <div style="font-size:11px;color:rgba(245,240,232,.4)">Absoluut aantal gewonnen bomen</div>
       </div>
     </div>
 
