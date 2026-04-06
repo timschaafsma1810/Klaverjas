@@ -600,6 +600,54 @@ function openProfile(id){
   const avg=p.rounds?Math.round(p.totalScore/p.rounds):0;
   const avgCard=p.rounds?Math.round((p.totalCardScore||0)/p.rounds):0;
   const avgRoem=p.rounds?Math.round((p.totalRoemScore||0)/p.rounds):0;
+
+  // Rankingscore (zelfde formule als leaderboard)
+  const activePlayers=players.filter(q=>q.games>0);
+  const maxCardN=Math.max(...activePlayers.map(q=>q.games?(q.totalCardScore||0)/q.games:0),1);
+  const maxRoemN=Math.max(...activePlayers.map(q=>q.games?(q.totalRoemScore||0)/q.games:0),1);
+  const maxWinsN=Math.max(...activePlayers.map(q=>q.wins||0),1);
+  const pCardPerBoom=p.games?(p.totalCardScore||0)/p.games:0;
+  const pRoemPerBoom=p.games?(p.totalRoemScore||0)/p.games:0;
+  const wrFactor=p.games?p.wins/p.games:0;
+  const cardFactor=pCardPerBoom/maxCardN;
+  const roemFactor=pRoemPerBoom/maxRoemN;
+  const winsFactor=(p.wins||0)/maxWinsN;
+  const totalScore=Math.round((wrFactor*0.35+cardFactor*0.40+roemFactor*0.15+winsFactor*0.10)*100);
+  const ranked=[...activePlayers].sort((a,b)=>{
+    const scoreOf=q=>{const wf=q.wins/q.games,cf=((q.totalCardScore||0)/q.games)/maxCardN,rf=((q.totalRoemScore||0)/q.games)/maxRoemN,wif=(q.wins||0)/maxWinsN;return wf*0.35+cf*0.40+rf*0.15+wif*0.10;};
+    return scoreOf(b)-scoreOf(a);
+  });
+  const rank=p.games?(ranked.findIndex(q=>q.id===p.id)+1):null;
+  const scoreHTML=p.games?`
+    <div style="background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.18);border-radius:12px;padding:12px 14px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:600;color:rgba(245,240,232,.5)">Rankingscore</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button onclick="openScoreInfo()" style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);color:rgba(201,168,76,.8);border-radius:50%;width:18px;height:18px;font-size:10px;cursor:pointer;padding:0;line-height:1">ℹ</button>
+          <div style="text-align:right">
+            <span style="font-size:22px;font-weight:900;color:var(--gold)">${totalScore}</span>
+            ${rank?`<span style="font-size:11px;color:rgba(245,240,232,.35);margin-left:4px">#${rank} van ${activePlayers.length}</span>`:''}
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px">
+        ${[
+          {icon:'📈',label:'Winstpercentage',val:wr+'%',factor:wrFactor,weight:35},
+          {icon:'📊',label:'Kaart/boom',val:Math.round(pCardPerBoom),factor:cardFactor,weight:40},
+          {icon:'🌟',label:'Roem/boom',val:Math.round(pRoemPerBoom),factor:roemFactor,weight:15},
+          {icon:'🏆',label:'Winsten',val:p.wins,factor:winsFactor,weight:10},
+        ].map(f=>`
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:90px;font-size:11px;color:rgba(245,240,232,.5);white-space:nowrap">${f.icon} ${f.label}</div>
+            <div style="flex:1;background:rgba(245,240,232,.08);border-radius:4px;height:6px;overflow:hidden">
+              <div style="width:${Math.round(f.factor*100)}%;height:100%;background:var(--gold);border-radius:4px"></div>
+            </div>
+            <div style="font-size:11px;color:rgba(245,240,232,.6);width:32px;text-align:right">${f.val}</div>
+            <div style="font-size:10px;color:rgba(201,168,76,.6);width:30px;text-align:right">+${Math.round(f.factor*f.weight)}</div>
+          </div>`).join('')}
+      </div>
+    </div>`:'';
+
   const since=new Date(p.created).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
   const kaapCount=p.roundsKaap||0;
   const spelPct=p.rounds>0?Math.round(p.roundsPlayed/p.rounds*100):0;
@@ -653,6 +701,7 @@ function openProfile(id){
       <div class="stat-box" title="% van blaadjes waarbij deze speler de maker was"><div class="stat-value">${spelPct}%</div><div class="stat-label">📊 % Maker</div></div>
     </div>
 
+    ${scoreHTML}
     <div class="card-label" style="margin-bottom:8px">Recente spellen</div>
     ${recentHTML}
     <div style="height:14px"></div>
