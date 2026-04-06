@@ -2571,38 +2571,55 @@ function renderDuoStats(){
 function openScoreInfo(){
   document.getElementById('modal-specials-detail-content').innerHTML=`
     <div class="modal-title">ℹ Hoe werkt de score? <span class="modal-close" onclick="closeModal('modal-specials-detail')">✕</span></div>
-    <div style="font-size:13px;color:rgba(245,240,232,.7);margin-bottom:16px">De score is een <strong style="color:rgba(245,240,232,.9)">samengestelde ranking</strong> gebaseerd op 4 factoren. Elke factor wordt genormaliseerd naar 0–1 ten opzichte van de beste in de groep.</div>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+    <div style="font-size:13px;color:rgba(245,240,232,.65);margin-bottom:14px;line-height:1.5">De score combineert 4 statistieken. Per onderdeel wordt gekeken <em>hoe goed jij het doet ten opzichte van de beste in de groep</em> — die beste krijgt altijd 1.0, de rest een getal daartussen.</div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
+      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:11px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
           <span style="font-size:13px;font-weight:700">📈 Winstpercentage</span>
-          <span style="font-size:16px;font-weight:800;color:var(--gold)">35%</span>
+          <span style="font-size:15px;font-weight:800;color:var(--gold)">35%</span>
         </div>
-        <div style="font-size:11px;color:rgba(245,240,232,.45)">Winst gedeeld door totaal aantal gespeelde bomen</div>
+        <div style="font-size:11px;color:rgba(245,240,232,.4)">Gewonnen bomen ÷ gespeelde bomen</div>
       </div>
-      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:11px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
           <span style="font-size:13px;font-weight:700">📊 Gem. kaartpunten/boom</span>
-          <span style="font-size:16px;font-weight:800;color:var(--gold)">40%</span>
+          <span style="font-size:15px;font-weight:800;color:var(--gold)">40%</span>
         </div>
-        <div style="font-size:11px;color:rgba(245,240,232,.45)">Gemiddeld aantal puur kaartpunten per boom (roem is hier uitgehaald)</div>
+        <div style="font-size:11px;color:rgba(245,240,232,.4)">Puur kaartpunten per boom (zonder roem)</div>
       </div>
-      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:11px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
           <span style="font-size:13px;font-weight:700">🌟 Gem. roem/boom</span>
-          <span style="font-size:16px;font-weight:800;color:var(--gold)">15%</span>
+          <span style="font-size:15px;font-weight:800;color:var(--gold)">15%</span>
         </div>
-        <div style="font-size:11px;color:rgba(245,240,232,.45)">Gemiddelde roempunten per boom</div>
+        <div style="font-size:11px;color:rgba(245,240,232,.4)">Gemiddelde roempunten per boom</div>
       </div>
-      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:12px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:11px 12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
           <span style="font-size:13px;font-weight:700">🏆 Totaal winsten</span>
-          <span style="font-size:16px;font-weight:800;color:var(--gold)">10%</span>
+          <span style="font-size:15px;font-weight:800;color:var(--gold)">10%</span>
         </div>
-        <div style="font-size:11px;color:rgba(245,240,232,.45)">Absoluut aantal gewonnen bomen (beloont volume)</div>
+        <div style="font-size:11px;color:rgba(245,240,232,.4)">Absoluut aantal gewonnen bomen (beloont volume)</div>
       </div>
     </div>
-    <div style="margin-top:14px;font-size:11px;color:rgba(245,240,232,.3);text-align:center">Score × 100 weergegeven (0–100)</div>
+
+    <div style="background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);border-radius:10px;padding:12px;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:700;color:rgba(201,168,76,.9);margin-bottom:8px">Voorbeeld</div>
+      <div style="font-size:11px;color:rgba(245,240,232,.6);line-height:1.8">
+        Beste groep: winrate 80%, kaart 90 p/b, roem 50 p/b, 10 winsten<br>
+        Jij: winrate <strong style="color:rgba(245,240,232,.85)">60%</strong>, kaart <strong style="color:rgba(245,240,232,.85)">72 p/b</strong>, roem <strong style="color:rgba(245,240,232,.85)">40 p/b</strong>, <strong style="color:rgba(245,240,232,.85)">6 winsten</strong>
+      </div>
+      <div style="margin-top:8px;font-size:11px;color:rgba(245,240,232,.45);line-height:1.9">
+        📈 60÷80 = 0.75 × 35% = <span style="color:rgba(245,240,232,.7)">26.3</span><br>
+        📊 72÷90 = 0.80 × 40% = <span style="color:rgba(245,240,232,.7)">32.0</span><br>
+        🌟 40÷50 = 0.80 × 15% = <span style="color:rgba(245,240,232,.7)">12.0</span><br>
+        🏆 6÷10 = 0.60 × 10% = <span style="color:rgba(245,240,232,.7)">6.0</span>
+      </div>
+      <div style="margin-top:6px;border-top:1px solid rgba(245,240,232,.1);padding-top:6px;font-size:12px;font-weight:700;color:var(--gold)">
+        Score = 26.3 + 32.0 + 12.0 + 6.0 = <span style="font-size:15px">76</span>
+      </div>
+    </div>
     <div style="height:8px"></div>`;
   openModal('modal-specials-detail');
 }
