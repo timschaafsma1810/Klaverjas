@@ -692,9 +692,8 @@ function openProfile(id){
       <div class="stat-box"><div class="stat-value" style="color:#e74c3c">${p.natAsMaker||0}</div><div class="stat-label">💧 Keer nat</div></div>
       <div class="stat-box"><div class="stat-value" style="color:#3498db">${p.verzAsMaker||0}</div><div class="stat-label">🔵 Keer verzaakt</div></div>
       <div class="stat-box"><div class="stat-value">${p.highScore}</div><div class="stat-label">⭐ Hoogste score</div></div>
-      <div class="stat-box"><div class="stat-value">${avg}</div><div class="stat-label">📊 Gem. per ronde</div></div>
-      <div class="stat-box"><div class="stat-value">${avgCard}</div><div class="stat-label">🃏 Gem. kaart</div></div>
-      <div class="stat-box"><div class="stat-value">${avgRoem}</div><div class="stat-label">🌟 Gem. roem</div></div>
+      <div class="stat-box"><div class="stat-value">${avgCard}</div><div class="stat-label">🃏 Gem. kaart/blaadje</div></div>
+      <div class="stat-box"><div class="stat-value">${avgRoem}</div><div class="stat-label">🌟 Gem. roem/blaadje</div></div>
       <div class="stat-box" title="Aantal keer dat jij maakte terwijl het niet jouw uitbeurt was"><div class="stat-value">${kaapCount}</div><div class="stat-label">🦅 Keer gekaapd</div></div>
       <div class="stat-box"><div class="stat-value">${p.rounds}</div><div class="stat-label">📄 Blaadjes</div></div>
       <div class="stat-box"><div class="stat-value">${p.roundsPlayed||0}</div><div class="stat-label">🎯 Keer maker</div></div>
