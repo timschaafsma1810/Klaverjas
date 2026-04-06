@@ -95,6 +95,7 @@ function recalcPlayerStats(){
   });
   games.forEach(g=>{
     if(g.active) return;
+    if(g.deletedAt) return;
     const finalWij=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
     const finalZij=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
     const wijWon=finalWij>finalZij;
@@ -1913,7 +1914,8 @@ function endGame(){
 function renderHistory(){
   const el=document.getElementById('history-list');
   if(!games.length){el.innerHTML=`<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nog geen spellen</div><div class="empty-sub">Start je eerste boom!</div></div>`;return}
-  el.innerHTML=[...games].reverse().map(g=>{
+  const trashedCount=games.filter(g=>g.deletedAt).length;
+  el.innerHTML=[...games].filter(g=>!g.deletedAt).reverse().map(g=>{
     const wn=[...g.wij,...(g.wijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
     const zn=[...g.zij,...(g.zijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
     const d=new Date(g.date).toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
@@ -1944,18 +1946,81 @@ function renderHistory(){
         </div>
       </div>
     </div>`;
-  }).join('');
+  }).join('')+`
+    <div style="padding:12px 16px 4px">
+      <button class="btn btn-ghost" onclick="openTrash()" style="display:flex;align-items:center;gap:8px;justify-content:center">
+        🗑 Prullenbak${trashedCount>0?` <span style="background:rgba(231,76,60,.25);color:#e74c3c;border-radius:10px;padding:1px 7px;font-size:11px">${trashedCount}</span>`:''}
+      </button>
+    </div>`;
 }
 
 function deleteGame(id){
-  doConfirm('Spel verwijderen','Weet je zeker dat je dit spel wilt verwijderen? Statistieken worden aangepast om dit spel te negeren.',()=>{
-    // Remove the game
+  doConfirm('Naar prullenbak','Dit spel wordt naar de prullenbak verplaatst. Je kunt het binnen 30 dagen herstellen.',()=>{
+    const g=games.find(g=>String(g.id)===String(id));
+    if(g){ g.deletedAt=Date.now(); saveAll(); recalcPlayerStats(); renderHistory(); showToast('🗑 Naar prullenbak verplaatst'); }
+  });
+}
+
+function openTrash(){
+  // Auto-purge spellen ouder dan 30 dagen
+  const cutoff=Date.now()-30*24*60*60*1000;
+  const before=games.length;
+  games=games.filter(g=>!g.deletedAt||g.deletedAt>cutoff);
+  if(games.length!==before){saveAll();}
+
+  const trashed=games.filter(g=>g.deletedAt).sort((a,b)=>b.deletedAt-a.deletedAt);
+  const el=document.getElementById('modal-trash-content');
+
+  if(!trashed.length){
+    el.innerHTML=`<div class="modal-title">🗑 Prullenbak <span class="modal-close" onclick="closeModal('modal-trash')">✕</span></div>
+      <div class="empty" style="padding:20px 0"><div class="empty-icon">🗑</div><div class="empty-text">Prullenbak is leeg</div></div>`;
+  } else {
+    const rows=trashed.map(g=>{
+      const wn=getGameTeamNames(g,'wij');
+      const zn=getGameTeamNames(g,'zij');
+      const d=new Date(g.date).toLocaleDateString('nl-NL',{day:'numeric',month:'short',year:'numeric'});
+      const daysLeft=Math.max(1,Math.ceil((30*24*60*60*1000-(Date.now()-g.deletedAt))/(24*60*60*1000)));
+      const fw=g.finalWij??g.scoreWij??0;
+      const fz=g.finalZij??g.scoreZij??0;
+      return `<div style="padding:12px 0;border-bottom:1px solid rgba(245,240,232,.08)">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:6px">
+          <div>
+            <div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:2px">${d} · ${g.rounds.length} blaadjes</div>
+            <div style="font-size:12px;color:rgba(245,240,232,.7);margin-bottom:2px">${wn} vs ${zn}</div>
+            <div style="font-size:16px;font-weight:700;color:var(--gold)">${fw} – ${fz}</div>
+          </div>
+          <div style="font-size:10px;color:rgba(245,240,232,.3);white-space:nowrap;padding-top:2px">nog ${daysLeft} dag${daysLeft!==1?'en':''}</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost btn-sm" style="flex:1;font-size:12px" onclick="restoreGame('${g.id}')">↩ Herstellen</button>
+          <button class="btn btn-red btn-sm" style="flex:1;font-size:12px" onclick="permanentDeleteGame('${g.id}')">🗑 Nu verwijderen</button>
+        </div>
+      </div>`;
+    }).join('');
+    el.innerHTML=`<div class="modal-title">🗑 Prullenbak <span class="modal-close" onclick="closeModal('modal-trash')">✕</span></div>
+      <div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:4px">Spellen worden na 30 dagen definitief verwijderd · niet meegerekend in statistieken</div>
+      ${rows}
+      ${trashed.length>1?`<button class="btn btn-red" style="margin-top:12px;width:100%" onclick="emptyTrash()">🗑 Prullenbak leegmaken (${trashed.length})</button>`:''}`;
+  }
+  openModal('modal-trash');
+}
+
+function restoreGame(id){
+  const g=games.find(g=>String(g.id)===String(id));
+  if(g){delete g.deletedAt;saveAll();recalcPlayerStats();openTrash();renderHistory();showToast('↩ Spel hersteld');}
+}
+
+function permanentDeleteGame(id){
+  doConfirm('Definitief verwijderen','Dit spel wordt permanent verwijderd en kan niet worden hersteld.',()=>{
     games=games.filter(g=>String(g.id)!==String(id));
-    // Recalculate player stats after deletion
-    recalcPlayerStats();
-    saveAll();
-    renderHistory();
-    showToast('Spel verwijderd');
+    saveAll();recalcPlayerStats();openTrash();renderHistory();showToast('🗑 Spel verwijderd');
+  });
+}
+
+function emptyTrash(){
+  doConfirm('Prullenbak leegmaken','Alle spellen in de prullenbak worden permanent verwijderd.',()=>{
+    games=games.filter(g=>!g.deletedAt);
+    saveAll();recalcPlayerStats();closeModal('modal-trash');renderHistory();showToast('🗑 Prullenbak leeggemaakt');
   });
 }
 
@@ -3081,6 +3146,10 @@ Object.assign(window,{
   endGame,
   renderHistory,
   deleteGame,
+  openTrash,
+  restoreGame,
+  permanentDeleteGame,
+  emptyTrash,
   editGameFromHistory,
   openGameDetail,
   renderStats,
