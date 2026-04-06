@@ -2149,22 +2149,28 @@ function renderSpelersLeaderboard(){
       <div style="padding:8px 16px 16px"><button class="btn btn-ghost" onclick="openAddPlayerModal()">+ Nieuwe speler toevoegen</button></div>`;
   }
   const medals=['🥇','🥈','🥉'];
-  // Sortering: meeste winsten → beste winrate → gem. puntenverschil
-  const ranked=[...players].sort((a,b)=>{
-    if((b.wins||0)!==(a.wins||0)) return (b.wins||0)-(a.wins||0);
-    const wrA=a.games?(a.wins/a.games):0;
-    const wrB=b.games?(b.wins/b.games):0;
-    if(wrB!==wrA) return wrB-wrA;
-    const dA=a.games?(a.totalPointDiff/a.games):0;
-    const dB=b.games?(b.totalPointDiff/b.games):0;
-    return dB-dA;
-  });
+
+  // Samengestelde score: winrate 35% · avg kaartpunten/boom 40% · avg roem/boom 15% · wins (absoluut) 10%
+  const activePlayers=players.filter(p=>p.games>0);
+  const maxCard=Math.max(...activePlayers.map(p=>p.games?(p.totalCardScore||0)/p.games:0),1);
+  const maxRoem2=Math.max(...activePlayers.map(p=>p.games?(p.totalRoemScore||0)/p.games:0),1);
+  const maxWins2=Math.max(...activePlayers.map(p=>p.wins||0),1);
+  const playerScore=p=>{
+    if(!p.games) return 0;
+    const wr=p.wins/p.games;
+    const card=((p.totalCardScore||0)/p.games)/maxCard;
+    const roem=((p.totalRoemScore||0)/p.games)/maxRoem2;
+    const wins=(p.wins||0)/maxWins2;
+    return wr*0.35 + card*0.40 + roem*0.15 + wins*0.10;
+  };
+
+  const ranked=[...players].sort((a,b)=>playerScore(b)-playerScore(a));
 
   const rows=ranked.map((p,i)=>{
     const wr=p.games?Math.round(p.wins/p.games*100):null;
-    const avgDiff=p.games?Math.round(p.totalPointDiff/p.games):null;
-    const diffStr=avgDiff===null?'—':avgDiff>=0?`+${avgDiff}`:`${avgDiff}`;
-    const diffColor=avgDiff===null?'rgba(245,240,232,.35)':avgDiff>0?'var(--win)':avgDiff<0?'#e74c3c':'rgba(245,240,232,.6)';
+    const avgCard2=p.games?Math.round((p.totalCardScore||0)/p.games):null;
+    const avgRoem2=p.games?Math.round((p.totalRoemScore||0)/p.games):null;
+    const score=Math.round(playerScore(p)*100);
     const avImg=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p.name[0].toUpperCase()}`;
     const form=getPlayerForm(p.id);
     const rank=i<3?`<span style="font-size:18px">${medals[i]}</span>`:`<span style="font-size:13px;color:rgba(245,240,232,.35);font-weight:700">${i+1}</span>`;
@@ -2177,13 +2183,16 @@ function renderSpelersLeaderboard(){
         <div style="flex:1;min-width:0">
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
             <span style="font-weight:700;font-size:15px">${p.name}${flame}${ice}</span>
-            <span style="font-size:13px;font-weight:800;color:var(--gold)">${p.wins}<span style="font-size:10px;font-weight:400;color:rgba(201,168,76,.6)">× gewonnen</span></span>
+            <div style="text-align:right">
+              <div style="font-size:14px;font-weight:800;color:var(--gold)">${p.games?score:'—'}</div>
+              <div style="font-size:9px;color:rgba(201,168,76,.5)">score</div>
+            </div>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;font-size:11px;color:rgba(245,240,232,.55);margin-bottom:${form.last5.length?'6':'0'}px">
+            <span>🏆 ${p.wins}× gewonnen</span>
             <span>📈 ${wr!==null?wr+'%':'—'} winrate</span>
-            <span style="color:${diffColor}">⚔️ gem. ${diffStr} p/boom</span>
-            <span>🌳 ${p.games}× gespeeld</span>
-            <span>💀 ${p.losses}× verloren</span>
+            <span>📊 ${avgCard2!==null?avgCard2:'—'} kaart/boom</span>
+            <span>🌟 ${avgRoem2!==null?avgRoem2:'—'} roem/boom</span>
           </div>
           ${form.last5.length?`<div style="display:flex;gap:3px;align-items:center">
             <span style="font-size:9px;color:rgba(245,240,232,.3);margin-right:2px">LAATSTE</span>
@@ -2194,7 +2203,11 @@ function renderSpelersLeaderboard(){
     </div>`;
   }).join('');
 
-  return `<div style="padding-bottom:4px">${rows}</div>
+  return `<div style="display:flex;align-items:center;gap:8px;padding:12px 16px 4px">
+      <div style="font-size:12px;font-weight:600;color:rgba(245,240,232,.4);flex:1">Samengestelde score op basis van 4 factoren</div>
+      <button onclick="openScoreInfo()" style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);color:rgba(201,168,76,.8);border-radius:50%;width:24px;height:24px;font-size:12px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">ℹ</button>
+    </div>
+    <div style="padding-bottom:4px">${rows}</div>
     <div style="padding:4px 16px 16px">
       <button class="btn btn-ghost" onclick="openAddPlayerModal()">+ Nieuwe speler toevoegen</button>
     </div>`;
@@ -2366,7 +2379,7 @@ function renderDuoStats(){
   const ensureDuo=(a,b)=>{
     const key=getDuoKey(a,b);
     if(!duos[key]) duos[key]={key,p1:Math.min(a,b)===a?a:b,p2:Math.min(a,b)===a?b:a,
-      games:0,wins:0,totalGamePoints:0,
+      games:0,wins:0,totalGamePoints:0,totalGameRoem:0,
       roundsActive:0,pointsInRounds:0,totalRoem:0,
       nat:0,verz:0,pit:0,
       natByP1:0,natByP2:0,natUnknown:0,
@@ -2391,6 +2404,7 @@ function renderDuoStats(){
           const d=ensureDuo(team[a],team[b]);
           d.games++;
           d.totalGamePoints+=pts||0;
+          d.totalGameRoem+=(ti===0?(g.roemWij||0):(g.roemZij||0));
           if(won) d.wins++;
         }
     });
@@ -2453,17 +2467,17 @@ function renderDuoStats(){
 
   if(!allEntries.length) return `<div class="empty"><div class="empty-icon">👫</div><div class="empty-text">Nog geen duo-data</div></div>`;
 
-  // Samengestelde score: winrate 35% · avg punten/boom 40% · avg roem/boom 15% · wins (absoluut) 10%
+  // Samengestelde score: winrate 35% · avg kaartpunten/boom 40% · avg roem/boom 15% · wins (absoluut) 10%
   // Alles genormaliseerd naar 0–1 op basis van het maximum in de huidige dataset
-  const maxPts=Math.max(...allEntries.map(d=>d.games?d.totalGamePoints/d.games:0),1);
-  const maxRoem=Math.max(...allEntries.map(d=>d.roundsActive?d.totalRoem/d.roundsActive:0),1);
+  const maxCard=Math.max(...allEntries.map(d=>d.games?(d.totalGamePoints-d.totalGameRoem)/d.games:0),1);
+  const maxRoem=Math.max(...allEntries.map(d=>d.games?d.totalGameRoem/d.games:0),1);
   const maxWins=Math.max(...allEntries.map(d=>d.wins||0),1);
   const duoScore=d=>{
     const wr=d.games?d.wins/d.games:0;
-    const pts=d.games?(d.totalGamePoints/d.games)/maxPts:0;
-    const roem=d.roundsActive?(d.totalRoem/d.roundsActive)/maxRoem:0;
+    const card=d.games?((d.totalGamePoints-d.totalGameRoem)/d.games)/maxCard:0;
+    const roem=d.games?(d.totalGameRoem/d.games)/maxRoem:0;
     const wins=(d.wins||0)/maxWins;
-    return wr*0.35 + pts*0.40 + roem*0.15 + wins*0.10;
+    return wr*0.35 + card*0.40 + roem*0.15 + wins*0.10;
   };
 
   const sorted=[...allEntries].sort((a,b)=>duoScore(b)-duoScore(a));
@@ -2475,8 +2489,8 @@ function renderDuoStats(){
   function duoRow(d, rank){
     const p1=getPlayer(d.p1),p2=getPlayer(d.p2);
     const wr=d.games?Math.round(d.wins/d.games*100):0;
-    const avgPts=d.games?Math.round(d.totalGamePoints/d.games):0;
-    const avgRoem=d.roundsActive?Math.round(d.totalRoem/d.roundsActive):0;
+    const avgCard=d.games?Math.round((d.totalGamePoints-d.totalGameRoem)/d.games):0;
+    const avgRoem=d.games?Math.round(d.totalGameRoem/d.games):0;
     const score=Math.round(duoScore(d)*100);
     const av1=p1.photo?`<img src="${p1.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p1.name[0]}`;
     const av2=p2.photo?`<img src="${p2.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p2.name[0]}`;
@@ -2510,12 +2524,12 @@ function renderDuoStats(){
           <div style="font-size:9px;color:rgba(245,240,232,.4)">📈 winrate</div>
         </div>
         <div style="background:rgba(245,240,232,.05);border-radius:6px;padding:5px;text-align:center">
-          <div style="font-size:12px;font-weight:700;color:var(--gold)">${avgPts}</div>
-          <div style="font-size:9px;color:rgba(245,240,232,.4)">📊 p/boom</div>
+          <div style="font-size:12px;font-weight:700;color:var(--gold)">${avgCard}</div>
+          <div style="font-size:9px;color:rgba(245,240,232,.4)">📊 kaart/boom</div>
         </div>
         <div style="background:rgba(245,240,232,.05);border-radius:6px;padding:5px;text-align:center">
           <div style="font-size:12px;font-weight:700;color:var(--gold)">${avgRoem}</div>
-          <div style="font-size:9px;color:rgba(245,240,232,.4)">🌟 roem/b</div>
+          <div style="font-size:9px;color:rgba(245,240,232,.4)">🌟 roem/boom</div>
         </div>
       </div>
     </div>`;
@@ -2537,15 +2551,60 @@ function renderDuoStats(){
       <div style="display:flex;flex-wrap:wrap;gap:8px">${playerChips}</div>
     </div>
     <div class="card">
-      <div class="card-label" style="margin-bottom:4px">🏆 Top 5 beste duo's</div>
-      <div style="font-size:11px;color:rgba(245,240,232,.35);margin-bottom:8px">Gesorteerd op gem. punten per boom</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div class="card-label" style="margin-bottom:0">🏆 Top 5 beste duo's</div>
+        <button onclick="openScoreInfo()" style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);color:rgba(201,168,76,.8);border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">ℹ</button>
+      </div>
+      <div style="font-size:11px;color:rgba(245,240,232,.35);margin-bottom:8px">Samengestelde score op basis van 4 factoren</div>
       ${top5.map((d,i)=>duoRow(d,i)).join('<div style="height:1px;background:rgba(245,240,232,.06)"></div>')}
     </div>
     <div class="card">
-      <div class="card-label" style="margin-bottom:4px">📉 Top 5 slechtste duo's</div>
-      <div style="font-size:11px;color:rgba(245,240,232,.35);margin-bottom:8px">Gesorteerd op gem. punten per boom</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+        <div class="card-label" style="margin-bottom:0">📉 Top 5 slechtste duo's</div>
+        <button onclick="openScoreInfo()" style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);color:rgba(201,168,76,.8);border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">ℹ</button>
+      </div>
+      <div style="font-size:11px;color:rgba(245,240,232,.35);margin-bottom:8px">Samengestelde score op basis van 4 factoren</div>
       ${bottom5.map((d,i)=>duoRow(d,allEntries.length-bottom5.length+i)).join('<div style="height:1px;background:rgba(245,240,232,.06)"></div>')}
     </div>`;
+}
+
+function openScoreInfo(){
+  document.getElementById('modal-specials-detail-content').innerHTML=`
+    <div class="modal-title">ℹ Hoe werkt de score? <span class="modal-close" onclick="closeModal('modal-specials-detail')">✕</span></div>
+    <div style="font-size:13px;color:rgba(245,240,232,.7);margin-bottom:16px">De score is een <strong style="color:rgba(245,240,232,.9)">samengestelde ranking</strong> gebaseerd op 4 factoren. Elke factor wordt genormaliseerd naar 0–1 ten opzichte van de beste in de groep.</div>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:13px;font-weight:700">📈 Winstpercentage</span>
+          <span style="font-size:16px;font-weight:800;color:var(--gold)">35%</span>
+        </div>
+        <div style="font-size:11px;color:rgba(245,240,232,.45)">Winst gedeeld door totaal aantal gespeelde bomen</div>
+      </div>
+      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:13px;font-weight:700">📊 Gem. kaartpunten/boom</span>
+          <span style="font-size:16px;font-weight:800;color:var(--gold)">40%</span>
+        </div>
+        <div style="font-size:11px;color:rgba(245,240,232,.45)">Gemiddeld aantal puur kaartpunten per boom (roem is hier uitgehaald)</div>
+      </div>
+      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:13px;font-weight:700">🌟 Gem. roem/boom</span>
+          <span style="font-size:16px;font-weight:800;color:var(--gold)">15%</span>
+        </div>
+        <div style="font-size:11px;color:rgba(245,240,232,.45)">Gemiddelde roempunten per boom</div>
+      </div>
+      <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:12px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span style="font-size:13px;font-weight:700">🏆 Totaal winsten</span>
+          <span style="font-size:16px;font-weight:800;color:var(--gold)">10%</span>
+        </div>
+        <div style="font-size:11px;color:rgba(245,240,232,.45)">Absoluut aantal gewonnen bomen (beloont volume)</div>
+      </div>
+    </div>
+    <div style="margin-top:14px;font-size:11px;color:rgba(245,240,232,.3);text-align:center">Score × 100 weergegeven (0–100)</div>
+    <div style="height:8px"></div>`;
+  openModal('modal-specials-detail');
 }
 
 function openPlayerDuos(playerId){
@@ -2558,8 +2617,8 @@ function openPlayerDuos(playerId){
   const rows=myDuos.map((d,i)=>{
     const partner=getPlayer(d.p1===playerId?d.p2:d.p1);if(!partner) return '';
     const wr=d.games?Math.round(d.wins/d.games*100):0;
-    const avgPts=d.games?Math.round(d.totalGamePoints/d.games):0;
-    const avgRoem=d.roundsActive?Math.round(d.totalRoem/d.roundsActive):0;
+    const avgCard=d.games?Math.round((d.totalGamePoints-d.totalGameRoem)/d.games):0;
+    const avgRoem=d.games?Math.round(d.totalGameRoem/d.games):0;
     const score=Math.round(scoreF(d)*100);
     const av=partner.photo?`<img src="${partner.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${partner.name[0]}`;
     const medal=medals[i];
@@ -2587,12 +2646,12 @@ function openPlayerDuos(playerId){
           <div style="font-size:9px;color:rgba(245,240,232,.4)">📈 winrate</div>
         </div>
         <div style="background:rgba(245,240,232,.05);border-radius:6px;padding:5px;text-align:center">
-          <div style="font-size:12px;font-weight:700;color:var(--gold)">${avgPts}</div>
-          <div style="font-size:9px;color:rgba(245,240,232,.4)">📊 p/boom</div>
+          <div style="font-size:12px;font-weight:700;color:var(--gold)">${avgCard}</div>
+          <div style="font-size:9px;color:rgba(245,240,232,.4)">📊 kaart/boom</div>
         </div>
         <div style="background:rgba(245,240,232,.05);border-radius:6px;padding:5px;text-align:center">
           <div style="font-size:12px;font-weight:700;color:var(--gold)">${avgRoem}</div>
-          <div style="font-size:9px;color:rgba(245,240,232,.4)">🌟 roem/b</div>
+          <div style="font-size:9px;color:rgba(245,240,232,.4)">🌟 roem/boom</div>
         </div>
       </div>
     </div>`;
