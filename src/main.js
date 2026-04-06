@@ -3326,6 +3326,7 @@ Object.assign(window,{
   recalcPlayerStats,
   addBenchSlot,
   openSpecialsDetail,
+  openScoreInfo,
   openPlayerDuos,
   toggleWisselCard,
   openWisselModal,
