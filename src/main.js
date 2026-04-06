@@ -2571,7 +2571,7 @@ function renderDuoStats(){
 function openScoreInfo(){
   document.getElementById('modal-specials-detail-content').innerHTML=`
     <div class="modal-title">ℹ Hoe werkt de score? <span class="modal-close" onclick="closeModal('modal-specials-detail')">✕</span></div>
-    <div style="font-size:13px;color:rgba(245,240,232,.65);margin-bottom:14px;line-height:1.5">De score combineert 4 statistieken. Per onderdeel wordt gekeken <em>hoe goed jij het doet ten opzichte van de beste in de groep</em> — die beste krijgt altijd 1.0, de rest een getal daartussen.</div>
+    <div style="font-size:13px;color:rgba(245,240,232,.65);margin-bottom:14px;line-height:1.5">De score combineert 4 statistieken. Per onderdeel wordt jouw waarde vergeleken met de <strong style="color:rgba(245,240,232,.85)">hoogste in jouw groep</strong>. Wie het hoogst scoort op een onderdeel krijgt altijd 100% op dat punt — de rest wordt daar procentueel mee vergeleken.</div>
 
     <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">
       <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:11px 12px">
@@ -2586,7 +2586,7 @@ function openScoreInfo(){
           <span style="font-size:13px;font-weight:700">📊 Gem. kaartpunten/boom</span>
           <span style="font-size:15px;font-weight:800;color:var(--gold)">40%</span>
         </div>
-        <div style="font-size:11px;color:rgba(245,240,232,.4)">Puur kaartpunten per boom (zonder roem)</div>
+        <div style="font-size:11px;color:rgba(245,240,232,.4)">Puur kaartpunten per boom (roem apart meegeteld)</div>
       </div>
       <div style="background:rgba(245,240,232,.06);border-radius:10px;padding:11px 12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
@@ -2605,20 +2605,16 @@ function openScoreInfo(){
     </div>
 
     <div style="background:rgba(201,168,76,.08);border:1px solid rgba(201,168,76,.2);border-radius:10px;padding:12px;margin-bottom:8px">
-      <div style="font-size:12px;font-weight:700;color:rgba(201,168,76,.9);margin-bottom:8px">Voorbeeld</div>
-      <div style="font-size:11px;color:rgba(245,240,232,.6);line-height:1.8">
-        Beste groep: winrate 80%, kaart 90 p/b, roem 50 p/b, 10 winsten<br>
-        Jij: winrate <strong style="color:rgba(245,240,232,.85)">60%</strong>, kaart <strong style="color:rgba(245,240,232,.85)">72 p/b</strong>, roem <strong style="color:rgba(245,240,232,.85)">40 p/b</strong>, <strong style="color:rgba(245,240,232,.85)">6 winsten</strong>
+      <div style="font-size:12px;font-weight:700;color:rgba(201,168,76,.9);margin-bottom:8px">Voorbeeld — alleen winstpercentage</div>
+      <div style="font-size:12px;color:rgba(245,240,232,.6);line-height:1.7;margin-bottom:8px">
+        Tim wint 8 van de 10 bomen → <strong style="color:rgba(245,240,232,.85)">80%</strong> (hoogste in de groep)<br>
+        Jannou wint 6 van de 10 bomen → <strong style="color:rgba(245,240,232,.85)">60%</strong>
       </div>
-      <div style="margin-top:8px;font-size:11px;color:rgba(245,240,232,.45);line-height:1.9">
-        📈 60÷80 = 0.75 × 35% = <span style="color:rgba(245,240,232,.7)">26.3</span><br>
-        📊 72÷90 = 0.80 × 40% = <span style="color:rgba(245,240,232,.7)">32.0</span><br>
-        🌟 40÷50 = 0.80 × 15% = <span style="color:rgba(245,240,232,.7)">12.0</span><br>
-        🏆 6÷10 = 0.60 × 10% = <span style="color:rgba(245,240,232,.7)">6.0</span>
+      <div style="font-size:11px;color:rgba(245,240,232,.45);line-height:1.9">
+        Tim: 80% ÷ 80% = <strong style="color:rgba(245,240,232,.7)">1.00</strong> × 35 = <span style="color:rgba(245,240,232,.8)">35 punten</span><br>
+        Jannou: 60% ÷ 80% = <strong style="color:rgba(245,240,232,.7)">0.75</strong> × 35 = <span style="color:rgba(245,240,232,.8)">26 punten</span>
       </div>
-      <div style="margin-top:6px;border-top:1px solid rgba(245,240,232,.1);padding-top:6px;font-size:12px;font-weight:700;color:var(--gold)">
-        Score = 26.3 + 32.0 + 12.0 + 6.0 = <span style="font-size:15px">76</span>
-      </div>
+      <div style="margin-top:6px;border-top:1px solid rgba(245,240,232,.1);padding-top:6px;font-size:11px;color:rgba(245,240,232,.4)">Hetzelfde principe geldt voor de andere 3 factoren. Alle punten bij elkaar opgeteld = eindscore (max 100).</div>
     </div>
     <div style="height:8px"></div>`;
   openModal('modal-specials-detail');
