@@ -616,10 +616,11 @@ function getPlayerAchievements(playerId){
       return isWij?(sp.includes('PIT WIJ')&&!r.spelWij):(sp.includes('PIT ZIJ')&&!!r.spelWij);
     });
   });
-  // Boom < 1.5 uur
-  const hasSpeedRun=completedGames.some(g=>g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<1.5*3600000);
+  // Boom < 1.5 uur (bomen > 6u worden genegeerd: vergeten te stoppen)
+  const validTimedGames=completedGames.filter(g=>g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<6*3600000);
+  const hasSpeedRun=validTimedGames.some(g=>(new Date(g.endDate)-new Date(g.date))<1.5*3600000);
   // Boom > 3.5 uur
-  const hasMarathon=completedGames.some(g=>g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))>3.5*3600000);
+  const hasMarathon=validTimedGames.some(g=>(new Date(g.endDate)-new Date(g.date))>3.5*3600000);
   // 10+ verschillende partners
   const partners=new Set();
   completedGames.forEach(g=>{
@@ -2392,7 +2393,7 @@ function renderAlgemeenStats(){
   const completedBomen=games.filter(g=>g.completed).length;
   const finishedGames=games.filter(g=>!g.active);
   const avgBlaadjes=finishedGames.length?Math.round(finishedGames.reduce((s,g)=>s+g.rounds.length,0)/finishedGames.length):0;
-  const timedGames=finishedGames.filter(g=>g.completed&&g.date&&g.endDate);
+  const timedGames=finishedGames.filter(g=>g.completed&&g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<6*3600000);
   const avgDurMs=timedGames.length?timedGames.reduce((s,g)=>s+(new Date(g.endDate)-new Date(g.date)),0)/timedGames.length:null;
   const avgDurStr=avgDurMs?formatDuration(avgDurMs):null;
   const totalDurMs=timedGames.length?timedGames.reduce((s,g)=>s+(new Date(g.endDate)-new Date(g.date)),0):null;
@@ -3025,7 +3026,7 @@ function renderRecordsStats(){
   const byVerspeeld=[...active].filter(p=>verspeeld[p.id]>0).sort((a,b)=>(verspeeld[b.id]||0)-(verspeeld[a.id]||0));
 
   // Langste en snelste boom (alleen voltooide spellen met start- en eindtijd)
-  const timedGames=games.filter(g=>!g.active&&g.completed&&g.date&&g.endDate);
+  const timedGames=games.filter(g=>!g.active&&g.completed&&g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<6*3600000);
   let longestGame=null,shortestGame=null;
   timedGames.forEach(g=>{
     const dur=new Date(g.endDate)-new Date(g.date);
