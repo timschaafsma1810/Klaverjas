@@ -644,11 +644,30 @@ function getPlayerAchievements(playerId){
     {icon:'👑',name:'Roem-koning',   desc:'500+ roem in één boom',            unlocked:hasRoem500},
     {icon:'⚔️',name:'Tegenpit!',    desc:'Een tegenpit gespeeld',            unlocked:hasTegenpit},
     {icon:'⚡',name:'Bliksem',       desc:'Boom binnen 1,5 uur gespeeld',     unlocked:hasSpeedRun},
-    {icon:'🌙',name:'Nachtspeler',   desc:'Boom langer dan 3,5 uur gespeeld', unlocked:hasMarathon},
+    {icon:'🌙',name:'Nachtspeler',   desc:'Een boom die langer dan 3,5 uur heeft geduurd', unlocked:hasMarathon},
     {icon:'🤝',name:'Netwerker',     desc:'10+ verschillende duo\'s gehad',   unlocked:partners.size>=10},
     {icon:'🔥',name:'Op dreef',      desc:'5 overwinningen op rij',           unlocked:maxStreak>=5},
     {icon:'🏆',name:'Kampioen',      desc:'Een toernooi gewonnen',            unlocked:hasTournamentWin},
   ];
+}
+
+function showAchievementTip(i){
+  const a=(window._achievements||[])[i];if(!a) return;
+  const box=document.getElementById('achievement-tip');if(!box) return;
+  // Toggle: klik nogmaals om te sluiten
+  if(box._openIdx===i&&box.style.display!=='none'){box.style.display='none';box._openIdx=null;return;}
+  box._openIdx=i;
+  box.style.display='block';
+  box.innerHTML=`
+    <div style="display:flex;align-items:flex-start;gap:12px">
+      <div style="font-size:32px;${a.unlocked?'':'filter:grayscale(1);opacity:.5'}">${a.icon}</div>
+      <div style="flex:1">
+        <div style="font-size:14px;font-weight:700;color:${a.unlocked?'var(--gold)':'rgba(245,240,232,.7)'};margin-bottom:3px">${a.name}</div>
+        <div style="font-size:12px;color:rgba(245,240,232,.6);line-height:1.5">${a.desc}</div>
+        <div style="margin-top:6px;font-size:11px;font-weight:700;color:${a.unlocked?'var(--win)':'rgba(245,240,232,.35)'}">${a.unlocked?'✓ Behaald':'Nog niet behaald'}</div>
+      </div>
+      <button onclick="document.getElementById('achievement-tip').style.display='none'" style="background:none;border:none;color:rgba(245,240,232,.4);font-size:16px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">✕</button>
+    </div>`;
 }
 
 function openProfile(id){
@@ -661,6 +680,7 @@ function openProfile(id){
   // Achievements
   const achievements=getPlayerAchievements(id);
   const unlockedCount=achievements.filter(a=>a.unlocked).length;
+  window._achievements=achievements;
   const achievementsHTML=`
     <div style="margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -668,12 +688,13 @@ function openProfile(id){
         <div style="font-size:11px;color:rgba(245,240,232,.4)">${unlockedCount} van ${achievements.length} behaald</div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
-        ${achievements.map(a=>`
-          <div title="${a.desc}" style="background:${a.unlocked?'rgba(201,168,76,.1)':'rgba(245,240,232,.03)'};border:1px solid ${a.unlocked?'rgba(201,168,76,.35)':'rgba(245,240,232,.07)'};border-radius:10px;padding:8px 4px;text-align:center;transition:opacity .2s;${a.unlocked?'':'opacity:0.3'}">
+        ${achievements.map((a,i)=>`
+          <div onclick="showAchievementTip(${i})" style="cursor:pointer;background:${a.unlocked?'rgba(201,168,76,.1)':'rgba(245,240,232,.03)'};border:1px solid ${a.unlocked?'rgba(201,168,76,.35)':'rgba(245,240,232,.07)'};border-radius:10px;padding:8px 4px;text-align:center;transition:opacity .2s;${a.unlocked?'':'opacity:0.3'}">
             <div style="font-size:22px;margin-bottom:3px;${a.unlocked?'':'filter:grayscale(1)'}">${a.icon}</div>
             <div style="font-size:9px;font-weight:${a.unlocked?'700':'400'};color:${a.unlocked?'rgba(201,168,76,.9)':'rgba(245,240,232,.4)'};line-height:1.3">${a.name}</div>
           </div>`).join('')}
       </div>
+      <div id="achievement-tip" style="display:none;margin-top:8px;background:rgba(30,55,30,.97);border:1px solid rgba(201,168,76,.3);border-radius:12px;padding:12px 14px"></div>
     </div>`;
 
   // Rankingscore (zelfde formule als leaderboard)
@@ -3468,6 +3489,7 @@ Object.assign(window,{
   addBenchSlot,
   openSpecialsDetail,
   openScoreInfo,
+  showAchievementTip,
   openPlayerDuos,
   toggleWisselCard,
   openWisselModal,
