@@ -594,12 +594,87 @@ function trendBadge(streak,streakType){
   return '';
 }
 
+function getPlayerAchievements(playerId){
+  const p=getPlayer(playerId);if(!p) return [];
+  const playerGames=games.filter(g=>!g.deletedAt&&[...g.wij,...(g.wijBench||[]),...g.zij,...(g.zijBench||[])].includes(playerId));
+  const completedGames=playerGames.filter(g=>!g.active);
+  // 2000+ punten in één boom
+  const hasHighScore=completedGames.some(g=>{
+    const isWij=[...g.wij,...(g.wijBench||[])].includes(playerId);
+    return (isWij?(g.finalWij??g.scoreWij):(g.finalZij??g.scoreZij))>2000;
+  });
+  // 500+ roem in één boom
+  const hasRoem500=completedGames.some(g=>{
+    const isWij=[...g.wij,...(g.wijBench||[])].includes(playerId);
+    return (isWij?(g.roemWij||0):(g.roemZij||0))>500;
+  });
+  // Tegenpit: PIT WIJ terwijl zij de maker was (!r.spelWij), of PIT ZIJ terwijl wij de maker was
+  const hasTegenpit=completedGames.some(g=>{
+    const isWij=[...g.wij,...(g.wijBench||[])].includes(playerId);
+    return g.rounds.some(r=>{
+      const sp=(r.special||'').toUpperCase();
+      return isWij?(sp.includes('PIT WIJ')&&!r.spelWij):(sp.includes('PIT ZIJ')&&!!r.spelWij);
+    });
+  });
+  // Boom < 1.5 uur
+  const hasSpeedRun=completedGames.some(g=>g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<1.5*3600000);
+  // Boom > 3.5 uur
+  const hasMarathon=completedGames.some(g=>g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))>3.5*3600000);
+  // 10+ verschillende partners
+  const partners=new Set();
+  completedGames.forEach(g=>{
+    const isWij=[...g.wij,...(g.wijBench||[])].includes(playerId);
+    const team=isWij?[...g.wij,...(g.wijBench||[])]:[...g.zij,...(g.zijBench||[])];
+    team.forEach(id=>{if(id!==playerId)partners.add(id);});
+  });
+  // 5+ winstreak ooit
+  const form=getPlayerForm(playerId);
+  let maxStreak=0,curStreak=0;
+  form.results.forEach(r=>{if(r==='W'){curStreak++;maxStreak=Math.max(maxStreak,curStreak);}else curStreak=0;});
+  // Toernooi gewonnen
+  const hasTournamentWin=tournaments.filter(t=>!t.active).some(t=>{
+    const st=getTournamentStandings(t);
+    return st[0]?.player?.id===playerId;
+  });
+  return [
+    {icon:'🃏',name:'Eerste slag',   desc:'Eerste boom gespeeld',             unlocked:p.games>=1},
+    {icon:'🌿',name:'Vaste speler',  desc:'10 bomen gespeeld',                unlocked:p.games>=10},
+    {icon:'🌳',name:'Boskaart',      desc:'100 bomen gespeeld',               unlocked:p.games>=100},
+    {icon:'💎',name:'Scoremachine',  desc:'2000+ punten in één boom',         unlocked:hasHighScore},
+    {icon:'👑',name:'Roem-koning',   desc:'500+ roem in één boom',            unlocked:hasRoem500},
+    {icon:'⚔️',name:'Tegenpit!',    desc:'Een tegenpit gespeeld',            unlocked:hasTegenpit},
+    {icon:'⚡',name:'Bliksem',       desc:'Boom binnen 1,5 uur gespeeld',     unlocked:hasSpeedRun},
+    {icon:'🌙',name:'Nachtspeler',   desc:'Boom langer dan 3,5 uur gespeeld', unlocked:hasMarathon},
+    {icon:'🤝',name:'Netwerker',     desc:'10+ verschillende duo\'s gehad',   unlocked:partners.size>=10},
+    {icon:'🔥',name:'Op dreef',      desc:'5 overwinningen op rij',           unlocked:maxStreak>=5},
+    {icon:'🏆',name:'Kampioen',      desc:'Een toernooi gewonnen',            unlocked:hasTournamentWin},
+  ];
+}
+
 function openProfile(id){
   const p=getPlayer(id);if(!p) return;
   const wr=p.games?Math.round(p.wins/p.games*100):0;
   const avg=p.rounds?Math.round(p.totalScore/p.rounds):0;
   const avgCard=p.rounds?Math.round((p.totalCardScore||0)/p.rounds):0;
   const avgRoem=p.rounds?Math.round((p.totalRoemScore||0)/p.rounds):0;
+
+  // Achievements
+  const achievements=getPlayerAchievements(id);
+  const unlockedCount=achievements.filter(a=>a.unlocked).length;
+  const achievementsHTML=`
+    <div style="margin-bottom:12px">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div class="card-label" style="margin:0">🏅 Achievements</div>
+        <div style="font-size:11px;color:rgba(245,240,232,.4)">${unlockedCount} van ${achievements.length} behaald</div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px">
+        ${achievements.map(a=>`
+          <div title="${a.desc}" style="background:${a.unlocked?'rgba(201,168,76,.1)':'rgba(245,240,232,.03)'};border:1px solid ${a.unlocked?'rgba(201,168,76,.35)':'rgba(245,240,232,.07)'};border-radius:10px;padding:8px 4px;text-align:center;transition:opacity .2s;${a.unlocked?'':'opacity:0.3'}">
+            <div style="font-size:22px;margin-bottom:3px;${a.unlocked?'':'filter:grayscale(1)'}">${a.icon}</div>
+            <div style="font-size:9px;font-weight:${a.unlocked?'700':'400'};color:${a.unlocked?'rgba(201,168,76,.9)':'rgba(245,240,232,.4)'};line-height:1.3">${a.name}</div>
+          </div>`).join('')}
+      </div>
+    </div>`;
 
   // Rankingscore (zelfde formule als leaderboard)
   const activePlayers=players.filter(q=>q.games>0);
@@ -700,6 +775,7 @@ function openProfile(id){
       <div class="stat-box" title="% van blaadjes waarbij deze speler de maker was"><div class="stat-value">${spelPct}%</div><div class="stat-label">📊 % Maker</div></div>
     </div>
 
+    ${achievementsHTML}
     ${scoreHTML}
     <div class="card-label" style="margin-bottom:8px">Recente spellen</div>
     ${recentHTML}
