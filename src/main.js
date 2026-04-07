@@ -644,7 +644,7 @@ function getPlayerAchievements(playerId){
     {icon:'👑',name:'Roem-koning',   desc:'500+ roem in één boom',            unlocked:hasRoem500},
     {icon:'⚔️',name:'Tegenpit!',    desc:'Een tegenpit gespeeld',            unlocked:hasTegenpit},
     {icon:'⚡',name:'Bliksem',       desc:'Boom binnen 1,5 uur gespeeld',     unlocked:hasSpeedRun},
-    {icon:'🌙',name:'Nachtspeler',   desc:'Een boom die langer dan 3,5 uur heeft geduurd', unlocked:hasMarathon},
+    {icon:'🐌',name:'Slakkengang',   desc:'Een boom die langer dan 3,5 uur heeft geduurd', unlocked:hasMarathon},
     {icon:'🤝',name:'Netwerker',     desc:'10+ verschillende duo\'s gehad',   unlocked:partners.size>=10},
     {icon:'🔥',name:'Op dreef',      desc:'5 overwinningen op rij',           unlocked:maxStreak>=5},
     {icon:'🏆',name:'Kampioen',      desc:'Een toernooi gewonnen',            unlocked:hasTournamentWin},
