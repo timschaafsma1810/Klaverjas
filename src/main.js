@@ -637,7 +637,7 @@ function getPlayerAchievements(playerId){
     return st[0]?.player?.id===playerId;
   });
   return [
-    {icon:'🃏',name:'Eerste slag',   desc:'Eerste boom gespeeld',             unlocked:p.games>=1},
+    {icon:'🃏',name:'Eerste boom',   desc:'Eerste boom gespeeld',             unlocked:p.games>=1},
     {icon:'🌿',name:'Vaste speler',  desc:'10 bomen gespeeld',                unlocked:p.games>=10},
     {icon:'🌳',name:'Boskaart',      desc:'100 bomen gespeeld',               unlocked:p.games>=100},
     {icon:'💎',name:'Scoremachine',  desc:'2000+ punten in één boom',         unlocked:hasHighScore},
