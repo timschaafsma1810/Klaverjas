@@ -3044,13 +3044,17 @@ function renderRecordsStats(){
         </div>`;
       }
       const byWr=duos.filter(d=>d.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games));
+      const byWins=[...duos].sort((a,b)=>(b.wins||0)-(a.wins||0));
       const byGames=[...duos].sort((a,b)=>b.games-a.games);
+      const byPts=[...duos].sort((a,b)=>(b.totalGamePoints||0)-(a.totalGamePoints||0));
       const byNat=[...duos].sort((a,b)=>b.nat-a.nat);
       const byPitDuo=[...duos].sort((a,b)=>(b.pit||0)-(a.pit||0));
       return `<div class="card">
         <div class="card-label">🤝 Duo records</div>
-        ${drow('🏆','Beste duo',byWr[0]||byGames[0],byWr[0]?Math.round(byWr[0].wins/byWr[0].games*100)+'% winrate':(Math.round((byGames[0]?.wins||0)/(byGames[0]?.games||1)*100)+'% winrate'))}
-        ${drow('🎮','Meest samen gespeeld',byGames[0],byGames[0]?.games+' bomen')}
+        ${byWins[0]?.wins>0?drow('🏆','Meeste winsten samen',byWins[0],byWins[0].wins+'× gewonnen'):''}
+        ${byWr[0]?drow('📈','Beste winrate samen',byWr[0],Math.round(byWr[0].wins/byWr[0].games*100)+'% winrate'):''}
+        ${drow('🌳','Meest samen gespeeld',byGames[0],byGames[0]?.games+' bomen')}
+        ${byPts[0]?.totalGamePoints>0?drow('💰','Hoogste totaal punten samen',byPts[0],byPts[0].totalGamePoints.toLocaleString('nl-NL')+' punten'):''}
         ${byNat[0]?.nat>0?drow('💧','Vaakst samen nat',byNat[0],byNat[0].nat+'× nat'):''}
         ${byPitDuo[0]?.pit>0?drow('💥','Vaakst samen pit',byPitDuo[0],byPitDuo[0].pit+'× pit'):''}
       </div>`;
