@@ -1063,7 +1063,7 @@ function openTafelModal(){
     </div>`;
   }
 
-  // Bench RIGHT of table: vertical plank + side U-brackets, players sit ON the plank (overlapping)
+  // Bench RIGHT of table: legs point LEFT, plank in middle, players sit on RIGHT side of plank
   function benchHTML(){
     if(!hasBench) return '';
     const n=allBench.length;
@@ -1072,9 +1072,10 @@ function openTafelModal(){
     const avSz=Math.max(28,Math.min(38,slotH-16));
     const benchH=n*slotH;
     const plankW=13;const legReach=16;const legBar=4;const legOpenH=14;
-    // Container: players overlap plank by ~half their width
+    // Players overlap plank from the RIGHT by ~45% of avatar width
     const overlap=Math.round(avSz*0.45);
-    const containerW=avSz+plankW-overlap+legReach;
+    // Layout left→right: [legs: legReach] [plank: plankW] [players: avSz - overlap]
+    const containerW=legReach+plankW+avSz-overlap;
 
     const slots=allBench.map(({id,isWij},i)=>{
       const p=getPlayer(id);const name=p?.name||'?';
@@ -1082,37 +1083,38 @@ function openTafelModal(){
       const grad=isWij?'#c9a84c,#8b6914':'rgba(245,240,232,.82),rgba(150,130,90,.55)';
       const bc=isWij?'rgba(201,168,76,.8)':'rgba(245,240,232,.5)';
       const topOff=i*slotH+Math.round((slotH-avSz-12)/2);
-      // Players centered over left edge of plank (avSz/2 into container = overlapping plank)
-      return `<div style="position:absolute;top:${topOff}px;left:${Math.round(avSz/2)}px;transform:translateX(-50%) rotate(-14deg);transform-origin:bottom center;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:2">
+      // Center player over right edge of plank (plank right edge = legReach+plankW)
+      const playerLeft=legReach+plankW+Math.round(avSz/2)-overlap;
+      return `<div style="position:absolute;top:${topOff}px;left:${playerLeft}px;transform:translateX(-50%) rotate(14deg);transform-origin:bottom center;display:flex;flex-direction:column;align-items:center;gap:2px;z-index:2">
         ${avatarHTML(p,avSz,grad,bc)}
         <div style="font-size:8px;font-weight:700;color:${tc};max-width:${avSz+8}px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
       </div>`;
     }).join('');
 
-    // Horizontal U-bracket pointing right: ╞═══╡ but one side = plank
+    // U-bracket opening RIGHT (toward plank), positioned LEFT of plank
     function sideBracket(topPct){
       const top=Math.round(benchH*topPct);
-      return `<div style="position:absolute;top:${top}px;left:${avSz-overlap+plankW}px;width:${legReach}px;height:${legOpenH}px">
+      return `<div style="position:absolute;top:${top}px;left:0;width:${legReach}px;height:${legOpenH}px">
         <div style="position:absolute;top:0;left:0;right:0;height:${legBar}px;background:#1a1a1a"></div>
         <div style="position:absolute;bottom:0;left:0;right:0;height:${legBar}px;background:#1a1a1a"></div>
-        <div style="position:absolute;top:0;bottom:0;right:0;width:${legBar}px;background:#1a1a1a;border-radius:0 2px 2px 0"></div>
+        <div style="position:absolute;top:0;bottom:0;left:0;width:${legBar}px;background:#1a1a1a;border-radius:2px 0 0 2px"></div>
       </div>`;
     }
 
     return `<div style="display:flex;flex-direction:column;align-items:flex-start;align-self:center">
-      <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35);margin-bottom:8px;padding-left:4px">BANKJE</div>
+      <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35);margin-bottom:8px;padding-left:${legReach+2}px">BANKJE</div>
       <div style="position:relative;width:${containerW}px;height:${benchH}px;overflow:visible">
-        <!-- Vertical plank (seat) — players overlap its left edge -->
-        <div style="position:absolute;top:0;left:${avSz-overlap}px;width:${plankW}px;height:${benchH}px;background:linear-gradient(to right,#dfc090,#c8a050 40%,#9a7030);border-radius:3px;box-shadow:2px 0 10px rgba(0,0,0,.35)">
+        <!-- U-brackets pointing left (legs on left side of plank) -->
+        ${sideBracket(0.12)}
+        ${sideBracket(0.68)}
+        <!-- Vertical plank (seat) — players overlap its right edge -->
+        <div style="position:absolute;top:0;left:${legReach}px;width:${plankW}px;height:${benchH}px;background:linear-gradient(to right,#dfc090,#c8a050 40%,#9a7030);border-radius:3px;box-shadow:2px 0 10px rgba(0,0,0,.35)">
           <div style="position:absolute;top:0;left:0;bottom:0;width:3px;background:rgba(255,240,200,.35);border-radius:3px 0 0 3px"></div>
           <div style="position:absolute;top:22%;left:2px;right:2px;height:1px;background:rgba(80,40,0,.15)"></div>
           <div style="position:absolute;top:48%;left:2px;right:2px;height:1px;background:rgba(80,40,0,.12)"></div>
           <div style="position:absolute;top:74%;left:2px;right:2px;height:1px;background:rgba(80,40,0,.09)"></div>
         </div>
-        <!-- Two side brackets (U-legs rotated, pointing right) -->
-        ${sideBracket(0.12)}
-        ${sideBracket(0.68)}
-        <!-- Players sitting on the plank -->
+        <!-- Players sitting on right side of plank -->
         ${slots}
       </div>
     </div>`;
