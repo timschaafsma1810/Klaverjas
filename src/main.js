@@ -1357,10 +1357,12 @@ function renderGame(){
 
   const g=current;
   if(refreshGameAutoSpecials(g)) recalcGameTotals(g), saveAll();
-  const wn=getGameTeamNames(g,'wij');
-  const zn=getGameTeamNames(g,'zij');
-  const wBench=(g.wijBench||[]).map(id=>getPlayer(id)?.name||'?');
-  const zBench=(g.zijBench||[]).map(id=>getPlayer(id)?.name||'?');
+  // Alleen huidige actieve spelers tonen (niet historisch via getGameTeamNames)
+  const wn=g.wij.map(id=>getPlayer(id)?.name||'?').join(' & ');
+  const zn=g.zij.map(id=>getPlayer(id)?.name||'?').join(' & ');
+  // Bankspelers die momenteel NIET actief zijn
+  const wBench=(g.wijBench||[]).filter(id=>!g.wij.includes(id)).map(id=>getPlayer(id)?.name||'?');
+  const zBench=(g.zijBench||[]).filter(id=>!g.zij.includes(id)).map(id=>getPlayer(id)?.name||'?');
   const rnd=Math.min(g.rounds.length+1,16);
 
   document.getElementById('wij-label').textContent=wn;
