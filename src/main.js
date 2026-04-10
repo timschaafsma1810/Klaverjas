@@ -109,10 +109,10 @@ function recalcPlayerStats(){
     [...allWijIds,...allZijIds].forEach(pid=>{
       const p=getPlayer(pid);if(!p) return;
       const isWij=allWijIds.includes(pid);
+      if(draw) return; // Gelijke spellen tellen niet mee in stats
       p.games++;
       p.totalPointDiff+=(isWij?finalWij:finalZij)-(isWij?finalZij:finalWij);
-      if(draw) p.draws++;
-      else if((isWij&&wijWon)||(!isWij&&!wijWon)) p.wins++;
+      if((isWij&&wijWon)||(!isWij&&!wijWon)) p.wins++;
       else p.losses++;
       // Punten alleen van voltooide bomen
       if(g.completed){
@@ -559,15 +559,15 @@ function getGameTeamNames(g, team){
 function getPlayerForm(pid){
   const allWijFn=g=>[...g.wij,...(g.wijBench||[])];
   const pg=games
-    .filter(g=>!g.active&&(allWijFn(g).includes(pid)||[...g.zij,...(g.zijBench||[])].includes(pid)))
+    .filter(g=>!g.active&&!g.deletedAt&&(allWijFn(g).includes(pid)||[...g.zij,...(g.zijBench||[])].includes(pid)))
     .sort((a,b)=>new Date(a.date)-new Date(b.date));
   const results=pg.map(g=>{
     const isWij=allWijFn(g).includes(pid);
     const fw=typeof g.finalWij==='number'?g.finalWij:g.scoreWij;
     const fz=typeof g.finalZij==='number'?g.finalZij:g.scoreZij;
-    if(fw===fz) return 'G';
+    if(fw===fz) return null; // Gelijke spellen overslaan
     return (isWij?fw>fz:fz>fw)?'W':'V';
-  });
+  }).filter(Boolean);
   const last5=results.slice(-5);
   let streak=0,streakType=null;
   if(results.length){
@@ -2590,6 +2590,17 @@ function openRecordRanking(type){
       </div>
       <span style="font-weight:700;color:var(--gold)">${val}</span>
     </div>`;}
+  function teamRow(ids,val,i){
+    const ps=ids.map(id=>getPlayer(id)||getPlayer(+id)).filter(Boolean);
+    if(!ps.length) return '';
+    return `<div class="stat-row">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:22px;text-align:center">${medal(i)}</div>
+        <div style="display:flex">${ps.map((p,j)=>`<div style="margin-left:${j?-8:0}px">${av(p,28)}</div>`).join('')}</div>
+        <span style="font-weight:600">${ps.map(p=>p.name).join(', ')}</span>
+      </div>
+      <span style="font-weight:700;color:var(--gold)">${val}</span>
+    </div>`;}
   function buildDuoMap(){
     const dm={};
     games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
@@ -2621,7 +2632,18 @@ function openRecordRanking(type){
   }
   const cfgs={
     wins:       {title:'🏆 Meeste overwinningen',       player:true, list:()=>[...active].sort((a,b)=>b.wins-a.wins),                                          fmt:p=>p.wins+'× gewonnen'},
-    highscore:  {title:'⭐ Hoogste score ooit',          player:true, list:()=>[...active].sort((a,b)=>b.highScore-a.highScore),                                fmt:p=>p.highScore+' punten'},
+    highscore:  {title:'⭐ Hoogste score ooit',          isTeam:true, list:()=>{
+      const entries=[];
+      games.filter(g=>!g.active&&!g.deletedAt&&g.completed).forEach(g=>{
+        const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
+        const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
+        const wijIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
+        const zijIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+        entries.push({ids:[...g.wij,...(g.wijBench||[]).filter(id=>wijIn.has(id))],score:fw});
+        entries.push({ids:[...g.zij,...(g.zijBench||[]).filter(id=>zijIn.has(id))],score:fz});
+      });
+      return entries.sort((a,b)=>b.score-a.score);
+    }, fmt:e=>e.score+' punten'},
     winrate:    {title:'📈 Beste winrate',               player:true, list:()=>active.filter(p=>p.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games)),    fmt:p=>Math.round(p.wins/p.games*100)+'% ('+p.games+' bomen)'},
     games:      {title:'🎮 Meest actief',                player:true, list:()=>[...active].sort((a,b)=>b.games-a.games),                                        fmt:p=>p.games+' bomen'},
     winstreak:  {title:'🔥 Langste winreeks ooit',       player:true, list:()=>[...active].map(p=>({...p,_v:longestStreak(p.id,'W')})).sort((a,b)=>b._v-a._v),fmt:p=>p._v+'× op rij'},
@@ -2633,7 +2655,7 @@ function openRecordRanking(type){
     lossstreak: {title:'😰 Langste verliesreeks ooit',   player:true, list:()=>[...active].map(p=>({...p,_v:longestStreak(p.id,'V')})).sort((a,b)=>b._v-a._v),fmt:p=>p._v+'× op rij'},
     verspeeld:  {title:'😬 Vaakst overwinning verspeeld',player:true, list:()=>{const v=buildVerspeeld();return[...active].filter(p=>v[p.id]>0).sort((a,b)=>(v[b.id]||0)-(v[a.id]||0)).map(p=>({...p,_v:v[p.id]}));}, fmt:p=>p._v+'× voorgestaan maar verloren'},
     'duo-wins': {title:'🏆 Meeste winsten samen',        player:false,list:()=>buildDuoMap().sort((a,b)=>(b.wins||0)-(a.wins||0)).filter(d=>d.wins>0),         fmt:d=>d.wins+'× gewonnen'},
-    'duo-wr':   {title:'📈 Beste winrate samen',         player:false,list:()=>buildDuoMap().filter(d=>d.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games)), fmt:d=>Math.round(d.wins/d.games*100)+'% ('+d.games+' bomen)'},
+    'duo-wr':   {title:'📈 Beste winrate samen',         player:false,list:()=>buildDuoMap().sort((a,b)=>(b.wins/b.games)-(a.wins/a.games)), fmt:d=>Math.round(d.wins/d.games*100)+'% ('+d.games+' boom'+( d.games===1?'':'en')+')'},
     'duo-games':{title:'🌳 Meest samen gespeeld',        player:false,list:()=>buildDuoMap().sort((a,b)=>b.games-a.games),                                     fmt:d=>d.games+' bomen'},
     'duo-pts':  {title:'💰 Hoogste totaal punten samen', player:false,list:()=>buildDuoMap().sort((a,b)=>(b.pts||0)-(a.pts||0)).filter(d=>d.pts>0),            fmt:d=>d.pts.toLocaleString('nl-NL')+' punten'},
     'duo-nat':  {title:'💧 Vaakst samen nat',            player:false,list:()=>buildDuoMap().sort((a,b)=>b.nat-a.nat).filter(d=>d.nat>0),                      fmt:d=>d.nat+'× nat'},
@@ -2641,7 +2663,7 @@ function openRecordRanking(type){
   const cfg=cfgs[type];if(!cfg) return;
   const list=cfg.list();
   const rows=list.length
-    ?(cfg.player?list.map((p,i)=>pRow(p,cfg.fmt(p),i)):list.map((d,i)=>dRow(d,cfg.fmt(d),i))).join('')
+    ?(cfg.isTeam?list.map((e,i)=>teamRow(e.ids,cfg.fmt(e),i)):cfg.player?list.map((p,i)=>pRow(p,cfg.fmt(p),i)):list.map((d,i)=>dRow(d,cfg.fmt(d),i))).join('')
     :`<div style="color:rgba(245,240,232,.4);font-size:13px;padding:8px 0">Nog geen data</div>`;
   document.getElementById('modal-specials-detail-content').innerHTML=`
     <div class="modal-title">${cfg.title} <span class="modal-close" onclick="closeModal('modal-specials-detail')">✕</span></div>
@@ -3186,8 +3208,21 @@ function renderRecordsStats(){
     if(!shortestGame||dur<shortestGame.dur) shortestGame={g,dur};
   });
 
+  // Team hoogste score (als team gescoord, niet per speler)
+  let teamHighScore={players:[],score:0};
+  games.filter(g=>!g.active&&!g.deletedAt&&g.completed).forEach(g=>{
+    const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
+    const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
+    const wijIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
+    const zijIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+    const wTeam=[...g.wij,...(g.wijBench||[]).filter(id=>wijIn.has(id))].map(getPlayer).filter(Boolean);
+    const zTeam=[...g.zij,...(g.zijBench||[]).filter(id=>zijIn.has(id))].map(getPlayer).filter(Boolean);
+    if(fw>teamHighScore.score) teamHighScore={players:wTeam,score:fw};
+    else if(fw===teamHighScore.score) teamHighScore={players:wTeam,score:fw}; // gelijkstand: meest recente
+    if(fz>teamHighScore.score) teamHighScore={players:zTeam,score:fz};
+  });
+
   const byWins=[...active].sort((a,b)=>b.wins-a.wins);
-  const byHighScore=[...active].sort((a,b)=>b.highScore-a.highScore);
   const byGames=[...active].sort((a,b)=>b.games-a.games);
   const byWr=active.filter(p=>p.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games));
   const byNat=[...active].sort((a,b)=>(b.natAsMaker||0)-(a.natAsMaker||0));
@@ -3236,7 +3271,8 @@ function renderRecordsStats(){
     <div class="card">
       <div class="card-label">🏅 Erelijst</div>
       ${row('🏆','Meeste overwinningen',tied(byWins,p=>p.wins),tied(byWins,p=>p.wins)[0]?.wins+'× gewonnen','',`openRecordRanking('wins')`)}
-      ${row('⭐','Hoogste score ooit',tied(byHighScore,p=>p.highScore),tied(byHighScore,p=>p.highScore)[0]?.highScore+' punten','',`openRecordRanking('highscore')`)}
+      ${teamHighScore.score>0?row('⭐','Hoogste score ooit',teamHighScore.players,teamHighScore.score+' punten','',`openRecordRanking('highscore')`):''}
+
       ${row('📈','Beste winrate',tied(byWr,p=>p.wins/p.games).slice(0,3),byWr[0]?Math.round(byWr[0].wins/byWr[0].games*100)+'%':'—',' (min. 2 bomen)',`openRecordRanking('winrate')`)}
       ${row('🎮','Meest actief',tied(byGames,p=>p.games),tied(byGames,p=>p.games)[0]?.games+' bomen gespeeld','',`openRecordRanking('games')`)}
       ${(()=>{const t=tiedObj(byWinStreak,x=>x.s);return row('🔥','Langste winreeks ooit',t.map(x=>x.p),t[0]?.s+'× op rij','',`openRecordRanking('winstreak')`);})()}
@@ -3293,7 +3329,7 @@ function renderRecordsStats(){
           <div style="font-weight:700;color:var(--gold);text-align:right">${val}${oc?' <span style="color:rgba(245,240,232,.3);font-size:10px">›</span>':''}</div>
         </div>`;
       }
-      const byWr=duos.filter(d=>d.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games));
+      const byWr=[...duos].sort((a,b)=>(b.wins/b.games)-(a.wins/a.games));
       const byWins=[...duos].sort((a,b)=>(b.wins||0)-(a.wins||0));
       const byGames=[...duos].sort((a,b)=>b.games-a.games);
       const byPts=[...duos].sort((a,b)=>(b.pts||0)-(a.pts||0));
