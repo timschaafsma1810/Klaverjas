@@ -1063,50 +1063,58 @@ function openTafelModal(){
     </div>`;
   }
 
-  // Wooden bench graphic with player heads on top
+  // Side bench: vertical bench viewed from above (top-down perspective like the table)
   function woodenBenchHTML(){
     if(!hasBench) return '';
     const n=allBench.length;
-    const slotW=44;const slotGap=8;
-    const benchInnerW=n*slotW+(n-1)*slotGap;
-    const plankPad=16;const plankW=benchInnerW+plankPad*2;
+    const avSz=n<=2?40:n===3?36:32;
+    const slotH=n<=2?60:n===3?54:48;
+    const benchH=n*slotH;
+    const plankW=64;
 
-    const slots=allBench.map(({id,isWij})=>{
+    const slots=allBench.map(({id,isWij},i)=>{
       const p=getPlayer(id);const name=p?.name||'?';
       const tc=isWij?'#c9a84c':'rgba(245,240,232,.78)';
       const grad=isWij?'#c9a84c,#8b6914':'rgba(245,240,232,.78),rgba(150,130,90,.55)';
       const bc=isWij?'rgba(201,168,76,.75)':'rgba(245,240,232,.45)';
-      return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;width:${slotW}px">
-        ${avatarHTML(p,slotW,grad,bc)}
-        <div style="font-size:9px;font-weight:600;color:${tc};max-width:${slotW+4}px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+      const topOff=i*slotH+Math.floor((slotH-avSz-14)/2);
+      return `<div style="position:absolute;top:${topOff}px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:2px">
+        ${avatarHTML(p,avSz,grad,bc)}
+        <div style="font-size:9px;font-weight:600;color:${tc};max-width:${plankW+6}px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
       </div>`;
     }).join('');
 
-    return `<div style="display:flex;flex-direction:column;align-items:center;margin:4px 0 20px">
-      <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35);margin-bottom:8px">BANKJE</div>
-      <div style="display:flex;gap:${slotGap}px;align-items:flex-end;margin-bottom:5px">${slots}</div>
-      <div style="width:${plankW}px;position:relative">
-        <div style="height:12px;background:linear-gradient(to bottom,#c8844a 0%,#9a5a28 40%,#7a3e18 100%);border-radius:4px;box-shadow:0 3px 8px rgba(0,0,0,.45);position:relative;overflow:hidden">
-          <div style="position:absolute;top:0;left:0;right:0;height:3px;background:rgba(255,210,140,.25);border-radius:4px 4px 0 0"></div>
-          <div style="position:absolute;top:4px;left:0;right:0;height:1px;background:rgba(0,0,0,.18)"></div>
-          <div style="position:absolute;top:7px;left:0;right:0;height:1px;background:rgba(0,0,0,.12)"></div>
-          <div style="position:absolute;top:10px;left:0;right:0;height:1px;background:rgba(0,0,0,.08)"></div>
+    const legSz=10;
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:6px;align-self:center">
+      <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35)">BANKJE</div>
+      <div style="position:relative;width:${plankW}px;height:${benchH+legSz*2}px">
+        <!-- bench plank: top-down view, brown wooden rectangle -->
+        <div style="position:absolute;top:${legSz}px;left:0;right:0;bottom:${legSz}px;background:linear-gradient(150deg,#d09050 0%,#9a5828 45%,#7a3e18 100%);border-radius:5px;box-shadow:0 4px 14px rgba(0,0,0,.5)">
+          <div style="position:absolute;top:0;left:0;bottom:0;width:5px;background:rgba(255,200,120,.22);border-radius:5px 0 0 5px"></div>
+          <div style="position:absolute;top:28%;left:12%;right:12%;height:1px;background:rgba(0,0,0,.18)"></div>
+          <div style="position:absolute;top:52%;left:12%;right:12%;height:1px;background:rgba(0,0,0,.14)"></div>
+          <div style="position:absolute;top:76%;left:12%;right:12%;height:1px;background:rgba(0,0,0,.1)"></div>
         </div>
-        <div style="display:flex;justify-content:space-between;padding:0 ${Math.round(plankPad*.6)}px">
-          <div style="width:7px;height:12px;background:linear-gradient(to bottom,#7a3e18,#52280e);border-radius:0 0 3px 3px;box-shadow:1px 2px 4px rgba(0,0,0,.3)"></div>
-          <div style="width:7px;height:12px;background:linear-gradient(to bottom,#7a3e18,#52280e);border-radius:0 0 3px 3px;box-shadow:1px 2px 4px rgba(0,0,0,.3)"></div>
-        </div>
+        <!-- 4 leg dots at corners (top-down perspective) -->
+        <div style="position:absolute;top:2px;left:2px;width:${legSz}px;height:${legSz}px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7a3e18,#3a1a08);box-shadow:0 2px 5px rgba(0,0,0,.45)"></div>
+        <div style="position:absolute;top:2px;right:2px;width:${legSz}px;height:${legSz}px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7a3e18,#3a1a08);box-shadow:0 2px 5px rgba(0,0,0,.45)"></div>
+        <div style="position:absolute;bottom:2px;left:2px;width:${legSz}px;height:${legSz}px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7a3e18,#3a1a08);box-shadow:0 2px 5px rgba(0,0,0,.45)"></div>
+        <div style="position:absolute;bottom:2px;right:2px;width:${legSz}px;height:${legSz}px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7a3e18,#3a1a08);box-shadow:0 2px 5px rgba(0,0,0,.45)"></div>
+        ${slots}
       </div>
     </div>`;
   }
 
-  // Round table
+  // Table + bench in flex row: bench on right, table shifts left when bench present
   const tableHTML=`
-    <div style="position:relative;width:196px;height:196px;margin:0 auto 0">
-      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:96px;height:96px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#1e5c34,#0f2d18);border:2px solid rgba(201,168,76,.35);box-shadow:0 0 20px rgba(0,0,0,.4)">
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;opacity:.3">♣</div>
+    <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:20px">
+      <div style="position:relative;width:196px;height:196px;flex-shrink:0">
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:96px;height:96px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#1e5c34,#0f2d18);border:2px solid rgba(201,168,76,.35);box-shadow:0 0 20px rgba(0,0,0,.4)">
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;opacity:.3">♣</div>
+        </div>
+        ${seatHTML('bottom',0)}${seatHTML('left',1)}${seatHTML('top',2)}${seatHTML('right',3)}
       </div>
-      ${seatHTML('bottom',0)}${seatHTML('left',1)}${seatHTML('top',2)}${seatHTML('right',3)}
+      ${woodenBenchHTML()}
     </div>`;
 
   // Speler wissel section (only if bench, shown FIRST above volgorde)
@@ -1152,7 +1160,7 @@ function openTafelModal(){
     <button class="btn btn-ghost" onclick="swapVolgorde('zij')">🔀 ZIJ: ${getPlayer(so[1])?.name||'?'} ↔ ${getPlayer(so[3])?.name||'?'}</button>
   </div>`;
 
-  document.getElementById('volgorde-content').innerHTML=tableHTML+woodenBenchHTML()+wisselSection+volgordeSection;
+  document.getElementById('volgorde-content').innerHTML=tableHTML+wisselSection+volgordeSection;
   const titleEl=document.querySelector('#modal-volgorde .modal-title');
   if(titleEl) titleEl.innerHTML=`🃏 Tafel & Wissel <span class="modal-close" onclick="closeModal('modal-volgorde')">✕</span>`;
   openModal('modal-volgorde');
