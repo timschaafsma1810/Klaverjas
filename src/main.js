@@ -748,7 +748,7 @@ function openProfile(id){
   const since=new Date(p.created).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
   const kaapCount=p.roundsKaap||0;
   const spelPct=p.rounds>0?Math.round(p.roundsPlayed/p.rounds*100):0;
-  const pg=games.filter(g=>[...g.wij,...(g.wijBench||[]),...g.zij,...(g.zijBench||[])].includes(p.id)).slice(-5).reverse();
+  const pg=games.filter(g=>!g.deletedAt&&[...g.wij,...(g.wijBench||[]),...g.zij,...(g.zijBench||[])].includes(p.id)).slice(-5).reverse();
   const avImg=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p.name[0].toUpperCase()}`;
   const form=getPlayerForm(p.id);
   const formHTML=form.last5.length?`
@@ -2447,10 +2447,11 @@ function renderStatsContent(){
 }
 
 function renderAlgemeenStats(){
-  const totGames=games.length;
-  const totRondes=games.reduce((s,g)=>s+g.rounds.length,0);
-  const completedBomen=games.filter(g=>g.completed).length;
-  const finishedGames=games.filter(g=>!g.active);
+  const activeGames=games.filter(g=>!g.deletedAt);
+  const totGames=activeGames.length;
+  const totRondes=activeGames.reduce((s,g)=>s+g.rounds.length,0);
+  const completedBomen=activeGames.filter(g=>g.completed).length;
+  const finishedGames=activeGames.filter(g=>!g.active);
   const avgBlaadjes=finishedGames.length?Math.round(finishedGames.reduce((s,g)=>s+g.rounds.length,0)/finishedGames.length):0;
   const timedGames=finishedGames.filter(g=>g.completed&&g.rounds.length>=16&&g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<6*3600000);
   const avgDurMs=timedGames.length?timedGames.reduce((s,g)=>s+(new Date(g.endDate)-new Date(g.date)),0)/timedGames.length:null;
@@ -2460,7 +2461,7 @@ function renderAlgemeenStats(){
   const completedFinished=finishedGames.filter(g=>g.completed&&typeof g.finalWij==='number'&&typeof g.finalZij==='number');
   const avgDiff=completedFinished.length?Math.round(completedFinished.reduce((s,g)=>s+Math.abs(g.finalWij-g.finalZij),0)/completedFinished.length):null;
   let allNat=0,allVerz=0,allPit=0;
-  games.forEach(g=>g.rounds.forEach(r=>{if(r.special){if(r.special.includes('NAT'))allNat++;if(r.special.includes('VERZ'))allVerz++;if(r.special.includes('PIT'))allPit++;}}));
+  activeGames.forEach(g=>g.rounds.forEach(r=>{if(r.special){if(r.special.includes('NAT'))allNat++;if(r.special.includes('VERZ'))allVerz++;if(r.special.includes('PIT'))allPit++;}}));
   const topScorer=players.sort((a,b)=>b.highScore-a.highScore)[0];
   const mostWins=players.sort((a,b)=>b.wins-a.wins)[0];
   return `
@@ -2517,7 +2518,7 @@ function openSpecialsDetail(type){
   if(type==='pit'||type==='nat'||type==='verz'){
     const tag=type==='pit'?'PIT':type==='nat'?'NAT':'VERZ';
     const duoCounts={};
-    games.forEach(g=>{
+    games.filter(g=>!g.deletedAt).forEach(g=>{
       g.rounds.forEach((r,i)=>{
         if(!r.special) return;
         const sp=r.special.toUpperCase();
@@ -2593,7 +2594,7 @@ function renderDuoStats(){
     return duos[key];
   };
 
-  games.forEach(g=>{
+  games.filter(g=>!g.deletedAt).forEach(g=>{
     // "bomen samen": tellen voor alle spelers die samen in het spel zaten (actief of bank)
     const wijAll=[...g.wij,...(g.wijBench||[])];
     const zijAll=[...g.zij,...(g.zijBench||[])];
@@ -2891,7 +2892,7 @@ function buildH2H(){
     if(!h2h[key]) h2h[key]={p1:Math.min(a,b),p2:Math.max(a,b),games:0,p1Wins:0,p2Wins:0,draws:0};
     return h2h[key];
   };
-  games.filter(g=>!g.active).forEach(g=>{
+  games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
     const wijAll=[...g.wij,...(g.wijBench||[])];
     const zijAll=[...g.zij,...(g.zijBench||[])];
     const wijWon=(g.finalWij??g.scoreWij)>(g.finalZij??g.scoreZij);
@@ -3050,7 +3051,7 @@ function renderRecordsStats(){
   // Vaakst overwinning verspeeld (voorstond halverwege maar verloor)
   const verspeeld={};
   // Alleen voltooide bomen voor records die boom-uitkomst vereisen
-  games.filter(g=>!g.active&&g.completed&&g.rounds.length>=2).forEach(g=>{
+  games.filter(g=>!g.active&&!g.deletedAt&&g.completed&&g.rounds.length>=2).forEach(g=>{
     const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
     const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
     if(fw===fz) return;
@@ -3085,7 +3086,7 @@ function renderRecordsStats(){
   const byVerspeeld=[...active].filter(p=>verspeeld[p.id]>0).sort((a,b)=>(verspeeld[b.id]||0)-(verspeeld[a.id]||0));
 
   // Langste en snelste boom (alleen voltooide spellen met start- en eindtijd)
-  const timedGames=games.filter(g=>!g.active&&g.completed&&g.rounds.length>=16&&g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<6*3600000);
+  const timedGames=games.filter(g=>!g.active&&!g.deletedAt&&g.completed&&g.rounds.length>=16&&g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<6*3600000);
   let longestGame=null,shortestGame=null;
   timedGames.forEach(g=>{
     const dur=new Date(g.endDate)-new Date(g.date);
@@ -3163,7 +3164,7 @@ function renderRecordsStats(){
     ${(()=>{
       // Duo records
       const duoMap={};
-      games.filter(g=>!g.active&&g.wij.length>=2&&g.zij.length>=2).forEach(g=>{
+      games.filter(g=>!g.active&&!g.deletedAt&&g.wij.length>=2&&g.zij.length>=2).forEach(g=>{
         [[g.wij,true],[g.zij,false]].forEach(([team,isWij])=>{
           const key=getDuoKey(team[0],team[1]);
           if(!duoMap[key]) duoMap[key]={p1:team[0],p2:team[1],games:0,wins:0,nat:0,verz:0};
@@ -3250,7 +3251,7 @@ function renderHome(){
   }
   // Recente afgeronde spellen
   const el=document.getElementById('recent-games-list');
-  const recent=[...games].filter(g=>!g.active).reverse().slice(0,5);
+  const recent=[...games].filter(g=>!g.active&&!g.deletedAt).reverse().slice(0,5);
   if(!recent.length){el.innerHTML=`<div class="empty"><div class="empty-icon">🃏</div><div class="empty-text">Nog geen spellen gespeeld</div><div class="empty-sub">Druk op "Nieuw spel starten" om te beginnen</div></div>`;return}
   el.innerHTML=recent.map(g=>{
     const wn=getGameTeamNames(g,'wij');
