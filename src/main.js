@@ -1025,27 +1025,33 @@ function openTafelModal(){
   const so=getSeatOrder(g);
   if(so.length<4) return showToast('Tafel niet beschikbaar',true);
 
-  // Bereken uitkomer en deler
   const roundIndex=g.rounds.length;
   const starterIdx=Math.max(0,so.indexOf(Number(g.starter)));
   const uitIdx=(starterIdx+roundIndex)%4;
   const dealerIdx=(starterIdx+roundIndex-1+4)%4;
 
-  function seatHTML(seatPos,playerIdx){
-    const pid=so[playerIdx];
-    const p=getPlayer(pid);
-    const name=p?.name||'?';
-    const isWij=playerIdx%2===0;
-    const teamColor=isWij?'#c9a84c':'rgba(245,240,232,.7)';
-    const isUit=playerIdx===uitIdx;
-    const isDealer=playerIdx===dealerIdx;
-    const avatarInner=p?.photo
+  // Bench players (only players not currently active)
+  const wijBenchAll=(g.wijBench||[]);
+  const zijBenchAll=(g.zijBench||[]);
+  const wijBench=wijBenchAll.filter(id=>!g.wij.includes(id));
+  const zijBench=zijBenchAll.filter(id=>!g.zij.includes(id));
+  const hasBench=wijBench.length>0||zijBench.length>0;
+
+  function avatarInnerHTML(p,size){
+    return p?.photo
       ?`<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
-      :`<span style="font-size:18px;font-weight:700;color:var(--green)">${name[0].toUpperCase()}</span>`;
+      :`<span style="font-size:${size==='sm'?13:17}px;font-weight:700;color:var(--green)">${(p?.name||'?')[0].toUpperCase()}</span>`;
+  }
+
+  function seatHTML(seatPos,playerIdx){
+    const pid=so[playerIdx];const p=getPlayer(pid);const name=p?.name||'?';
+    const isWij=playerIdx%2===0;
+    const teamColor=isWij?'#c9a84c':'rgba(245,240,232,.75)';
+    const isUit=playerIdx===uitIdx;const isDealer=playerIdx===dealerIdx;
     const badge=isUit
-      ?`<div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:#c9a84c;color:#163d24;font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;white-space:nowrap">UITBEURT</div>`
+      ?`<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:#c9a84c;color:#163d24;font-size:8px;font-weight:800;padding:1px 5px;border-radius:6px;white-space:nowrap;letter-spacing:.5px">UITBEURT</div>`
       :isDealer
-      ?`<div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:rgba(245,240,232,.15);color:rgba(245,240,232,.7);font-size:9px;font-weight:700;padding:1px 5px;border-radius:8px;white-space:nowrap">DELER</div>`
+      ?`<div style="position:absolute;top:-9px;left:50%;transform:translateX(-50%);background:rgba(245,240,232,.18);color:rgba(245,240,232,.75);font-size:8px;font-weight:700;padding:1px 5px;border-radius:6px;white-space:nowrap;letter-spacing:.5px">DELER</div>`
       :'';
     const posStyle={
       bottom:'bottom:0;left:50%;transform:translateX(-50%)',
@@ -1053,42 +1059,64 @@ function openTafelModal(){
       left:'left:0;top:50%;transform:translateY(-50%)',
       right:'right:0;top:50%;transform:translateY(-50%)',
     }[seatPos];
-    return `<div style="position:absolute;${posStyle};display:flex;flex-direction:column;align-items:center;gap:4px">
+    return `<div style="position:absolute;${posStyle};display:flex;flex-direction:column;align-items:center;gap:3px">
       <div style="position:relative">
         ${badge}
-        <div style="width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,${teamColor},${isWij?'#8b6914':'rgba(180,160,120,.5)'}
-);display:flex;align-items:center;justify-content:center;border:2px solid ${isUit?'#c9a84c':isDealer?'rgba(245,240,232,.3)':'rgba(201,168,76,.2)'};overflow:hidden">${avatarInner}</div>
+        <div style="width:42px;height:42px;border-radius:50%;background:linear-gradient(135deg,${teamColor},${isWij?'#8b6914':'rgba(180,160,120,.5)'});display:flex;align-items:center;justify-content:center;border:2px solid ${isUit?'#c9a84c':isDealer?'rgba(245,240,232,.35)':'rgba(201,168,76,.2)'};overflow:hidden">${avatarInnerHTML(p,'md')}</div>
       </div>
-      <div style="font-size:11px;font-weight:600;color:${teamColor};max-width:64px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+      <div style="font-size:10px;font-weight:600;color:${teamColor};max-width:60px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
     </div>`;
   }
 
-  // Bench players
-  const wijBench=g.wijBench||[];
-  const zijBench=g.zijBench||[];
-  const hasBench=wijBench.length>0||zijBench.length>0;
-
-  function benchChip(pid,isWij){
-    const p=getPlayer(pid);
-    const name=p?.name||'?';
-    const teamColor=isWij?'#c9a84c':'rgba(245,240,232,.7)';
-    const avatarInner=p?.photo
-      ?`<img src="${p.photo}" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`
-      :`<span style="font-size:13px;font-weight:700;color:var(--green)">${name[0].toUpperCase()}</span>`;
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px">
-      <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${teamColor},${isWij?'#8b6914':'rgba(180,160,120,.5)'});display:flex;align-items:center;justify-content:center;border:2px solid ${isWij?'rgba(201,168,76,.5)':'rgba(245,240,232,.3)'};overflow:hidden">${avatarInner}</div>
-      <div style="font-size:10px;font-weight:600;color:${teamColor};max-width:52px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+  function benchSlot(pid,isWij){
+    const p=getPlayer(pid);const name=p?.name||'?';
+    const teamColor=isWij?'#c9a84c':'rgba(245,240,232,.75)';
+    const borderColor=isWij?'rgba(201,168,76,.55)':'rgba(245,240,232,.3)';
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,${teamColor},${isWij?'#8b6914':'rgba(150,130,90,.5)'});display:flex;align-items:center;justify-content:center;border:2px dashed ${borderColor};overflow:hidden">${avatarInnerHTML(p,'sm')}</div>
+      <div style="font-size:9px;font-weight:600;color:${teamColor};max-width:48px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
     </div>`;
   }
 
-  const benchSection=hasBench?`
-    <div style="margin:0 0 16px">
-      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:rgba(245,240,232,.4);text-align:center;margin-bottom:10px">BANKJE</div>
-      <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
-        ${wijBench.map(pid=>benchChip(pid,true)).join('')}
-        ${zijBench.map(pid=>benchChip(pid,false)).join('')}
+  function benchPanel(players,isWij){
+    if(!players.length) return `<div style="width:52px;flex-shrink:0"></div>`;
+    const teamColor=isWij?'#c9a84c':'rgba(245,240,232,.65)';
+    const bgColor=isWij?'rgba(201,168,76,.07)':'rgba(245,240,232,.04)';
+    const borderColor=isWij?'rgba(201,168,76,.25)':'rgba(245,240,232,.18)';
+    const label=isWij?'WIJ':'ZIJ';
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 6px;background:${bgColor};border:1px dashed ${borderColor};border-radius:10px;min-width:52px;flex-shrink:0">
+      <div style="font-size:8px;font-weight:800;letter-spacing:1px;color:${teamColor};opacity:.7">BANK</div>
+      ${players.map(pid=>benchSlot(pid,isWij)).join('')}
+    </div>`;
+  }
+
+  // Table visual + bench panels side-by-side
+  const tableAndBench=`
+    <div style="display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:20px">
+      ${benchPanel(wijBench,true)}
+      <div style="position:relative;width:196px;height:196px;flex-shrink:0">
+        <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:96px;height:96px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#1e5c34,#0f2d18);border:2px solid rgba(201,168,76,.35);box-shadow:0 0 20px rgba(0,0,0,.4)">
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;opacity:.3">♣</div>
+        </div>
+        ${seatHTML('bottom',0)}
+        ${seatHTML('left',1)}
+        ${seatHTML('top',2)}
+        ${seatHTML('right',3)}
       </div>
-    </div>`:'';
+      ${benchPanel(zijBench,false)}
+    </div>`;
+
+  // Volgorde section
+  const volgordeSection=`
+    <div style="margin-bottom:${hasBench?'0':'4px'}">
+      <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:rgba(245,240,232,.4);text-align:center;margin-bottom:10px">🔀 VOLGORDE WISSELEN</div>
+      <button class="btn btn-ghost" style="margin-bottom:8px" onclick="swapVolgorde('wij')">
+        🔀 WIJ: ${getPlayer(so[0])?.name||'?'} ↔ ${getPlayer(so[2])?.name||'?'}
+      </button>
+      <button class="btn btn-ghost" onclick="swapVolgorde('zij')">
+        🔀 ZIJ: ${getPlayer(so[1])?.name||'?'} ↔ ${getPlayer(so[3])?.name||'?'}
+      </button>
+    </div>`;
 
   // Wissel section (only if bench players exist)
   let wisselSection='';
@@ -1110,13 +1138,13 @@ function openTafelModal(){
       const showToggle=bothHaveBench;
       const toggleHTML=showToggle?`
         <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;margin-bottom:0;user-select:none" onclick="toggleWisselCard('${team}')">
-          <span class="wissel-team-label" style="font-size:13px;font-weight:700;letter-spacing:.8px;color:var(--gold)">TEAM ${label.toUpperCase()} WISSELT</span>
-          <span id="toggle-${team}-wissel" style="width:34px;height:20px;border-radius:10px;background:var(--gold);color:var(--green);display:inline-flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;transition:all .2s;border:1px solid var(--gold)">✓</span>
+          <span style="font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--gold)">TEAM ${label.toUpperCase()} WISSELT</span>
+          <span id="toggle-${team}-wissel" style="width:32px;height:18px;border-radius:9px;background:var(--gold);color:var(--green);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;transition:all .2s">✓</span>
           <input type="checkbox" id="cb-${team}-wisselt" checked style="display:none">
         </label>`:`
-        <div class="wissel-team-label" style="font-size:12px;font-weight:700;letter-spacing:.8px;color:var(--gold);margin-bottom:8px">TEAM ${label.toUpperCase()} WISSELT</div>`;
+        <div style="font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--gold);margin-bottom:8px">TEAM ${label.toUpperCase()} WISSELT</div>`;
       return `
-      <div id="card-${team}-wissel" style="border:1px solid rgba(201,168,76,.5);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:rgba(201,168,76,.07);transition:all .2s">
+      <div id="card-${team}-wissel" style="border:1px solid rgba(201,168,76,.4);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:rgba(201,168,76,.06)">
         ${toggleHTML}
         <div id="fields-${team}-wissel" style="display:block;margin-top:${showToggle?'10px':'0'}">
           <label style="font-size:12px;color:rgba(245,240,232,.6);margin-top:4px">Wie gaat eruit?</label>
@@ -1132,32 +1160,14 @@ function openTafelModal(){
       teamCard('zij','Zij',hasZijBench,g.zij,zijBench,defaultZijUit);
 
     wisselSection=`
-      <div style="border-top:1px solid rgba(201,168,76,.2);margin:4px 0 16px;padding-top:16px">
-        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:rgba(245,240,232,.4);text-align:center;margin-bottom:12px">🔄 WISSEL UITVOEREN</div>
+      <div style="border-top:1px solid rgba(201,168,76,.2);margin-top:16px;padding-top:16px">
+        <div style="font-size:10px;font-weight:700;letter-spacing:1.5px;color:rgba(245,240,232,.4);text-align:center;margin-bottom:12px">↕ SPELER WISSELEN</div>
         ${wisselCards}
-        <button class="btn btn-gold" style="margin-bottom:10px" onclick="confirmWissel()">✓ Wissel bevestigen</button>
+        <button class="btn btn-gold" style="margin-bottom:4px" onclick="confirmWissel()">✓ Wissel bevestigen</button>
       </div>`;
   }
 
-  document.getElementById('volgorde-content').innerHTML=`
-    <div style="position:relative;width:240px;height:240px;margin:0 auto 20px">
-      <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:110px;height:110px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#1e5c34,#0f2d18);border:2px solid rgba(201,168,76,.35);box-shadow:0 0 20px rgba(0,0,0,.4)">
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:22px;opacity:.35">♣</div>
-      </div>
-      ${seatHTML('bottom',0)}
-      ${seatHTML('left',1)}
-      ${seatHTML('top',2)}
-      ${seatHTML('right',3)}
-    </div>
-    ${benchSection}
-    <button class="btn btn-ghost" style="margin-bottom:10px" onclick="swapVolgorde('wij')">
-      🔀 WIJ: ${getPlayer(so[0])?.name||'?'} ↔ ${getPlayer(so[2])?.name||'?'}
-    </button>
-    <button class="btn btn-ghost" onclick="swapVolgorde('zij')">
-      🔀 ZIJ: ${getPlayer(so[1])?.name||'?'} ↔ ${getPlayer(so[3])?.name||'?'}
-    </button>
-    ${wisselSection}`;
-
+  document.getElementById('volgorde-content').innerHTML=tableAndBench+volgordeSection+wisselSection;
   const titleEl=document.querySelector('#modal-volgorde .modal-title');
   if(titleEl) titleEl.innerHTML=`🃏 Tafel & Wissel <span class="modal-close" onclick="closeModal('modal-volgorde')">✕</span>`;
   openModal('modal-volgorde');
@@ -1191,6 +1201,7 @@ function confirmWissel(){
       g.wijBench[inBenchIdx]=uitId;
       const seatIdx=g.seatOrder.indexOf(uitId);
       if(seatIdx>=0) g.seatOrder[seatIdx]=inId;
+      if(g.starter===uitId) g.starter=inId;
       wisseling.wijUit=uitId;wisseling.wijIn=inId;
     }
   }
@@ -1207,6 +1218,7 @@ function confirmWissel(){
       g.zijBench[inBenchIdx]=uitId;
       const seatIdx=g.seatOrder.indexOf(uitId);
       if(seatIdx>=0) g.seatOrder[seatIdx]=inId;
+      if(g.starter===uitId) g.starter=inId;
       wisseling.zijUit=uitId;wisseling.zijIn=inId;
     }
   }
