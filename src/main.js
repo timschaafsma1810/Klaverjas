@@ -1063,54 +1063,58 @@ function openTafelModal(){
     </div>`;
   }
 
-  // Bench on the RIGHT side of table: players stacked vertically, wooden plank + black U-legs below
+  // Bench RIGHT of table: vertical plank (CSS rotate 90°), tilted player avatars on the left
   function benchHTML(){
     if(!hasBench) return '';
     const n=allBench.length;
-    // Fit bench height within ~table height (196px): players + plank(15) + legs(20) + label(22)
-    const maxContentH=196;const fixedH=57;// plank+legs+label+gaps
-    const slotH=Math.min(Math.floor((maxContentH-fixedH)/n),70);
-    const avSz=Math.min(Math.max(slotH-18,28),40);
-    const plankW=72;const plankH=15;const legH=18;const legW=26;const legBar=4;
+    const labelH=22;
+    const slotH=Math.min(54,Math.floor((190-labelH)/n));
+    const avSz=Math.max(26,slotH-16);
+    const benchLen=n*slotH;       // plank length = height after 90° rotation
+    const plankThick=14;          // plank thickness = width after rotation
+    const legBar=4;const legH=20;const legW=24;
+    const benchVisW=plankThick+legH; // total visual width of rotated bench
 
-    const slots=allBench.map(({id,isWij},i)=>{
+    const slots=allBench.map(({id,isWij})=>{
       const p=getPlayer(id);const name=p?.name||'?';
       const tc=isWij?'#c9a84c':'rgba(245,240,232,.85)';
       const grad=isWij?'#c9a84c,#8b6914':'rgba(245,240,232,.82),rgba(150,130,90,.55)';
       const bc=isWij?'rgba(201,168,76,.8)':'rgba(245,240,232,.5)';
-      // alternate slight lean direction
-      const rot=i%2===0?-7:-6;
-      return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;height:${slotH}px;justify-content:flex-end;transform:rotate(${rot}deg);transform-origin:bottom center">
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;height:${slotH}px;justify-content:center;transform:rotate(-14deg);transform-origin:bottom center">
         ${avatarHTML(p,avSz,grad,bc)}
-        <div style="font-size:8px;font-weight:700;color:${tc};max-width:${plankW}px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+        <div style="font-size:8px;font-weight:700;color:${tc};max-width:54px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
       </div>`;
     }).join('');
 
-    function uLeg(){
-      return `<div style="position:relative;width:${legW}px;height:${legH}px">
-        <div style="position:absolute;top:0;left:0;width:${legBar}px;height:${legH}px;background:#1a1a1a;border-radius:1px 1px 0 0"></div>
-        <div style="position:absolute;top:0;right:0;width:${legBar}px;height:${legH}px;background:#1a1a1a;border-radius:1px 1px 0 0"></div>
-        <div style="position:absolute;bottom:0;left:0;right:0;height:${legBar}px;background:#1a1a1a;border-radius:0 0 2px 2px"></div>
-      </div>`;
-    }
-
-    // Bench graphic (plank + legs) rotated ~45° for perspective look
-    const benchGraphic=`<div style="transform:rotate(-42deg);transform-origin:center top;margin-top:2px;width:${plankW}px">
-      <div style="width:${plankW}px;height:${plankH}px;background:linear-gradient(to bottom,#e8cfa0 0%,#cca865 40%,#a87840 100%);border-radius:3px;box-shadow:0 4px 14px rgba(0,0,0,.45);position:relative;overflow:hidden">
+    // Bench rendered horizontal (benchLen wide × benchVisW tall), rotated 90° into vertical
+    // After rotation: benchVisW wide × benchLen tall — wrapper reserves that space
+    const innerW=benchLen;const innerH=benchVisW;
+    const plankInner=`
+      <div style="width:${innerW}px;height:${plankThick}px;background:linear-gradient(to bottom,#e8cfa0,#cca865 40%,#a87840);border-radius:3px;box-shadow:0 4px 14px rgba(0,0,0,.45);position:relative;overflow:hidden">
         <div style="position:absolute;top:0;left:0;right:0;height:4px;background:rgba(255,240,200,.45);border-radius:3px 3px 0 0"></div>
         <div style="position:absolute;top:5px;left:0;right:0;height:1px;background:rgba(80,40,0,.12)"></div>
-        <div style="position:absolute;top:9px;left:15%;width:40%;height:1px;background:rgba(80,40,0,.1)"></div>
+        <div style="position:absolute;top:9px;left:15%;width:35%;height:1px;background:rgba(80,40,0,.1)"></div>
         <div style="position:absolute;top:12px;left:0;right:0;height:1px;background:rgba(80,40,0,.08)"></div>
-        <div style="position:absolute;top:0;bottom:0;left:0;width:6px;background:linear-gradient(to right,rgba(0,0,0,.15),transparent)"></div>
-        <div style="position:absolute;top:0;bottom:0;right:0;width:6px;background:linear-gradient(to left,rgba(0,0,0,.1),transparent)"></div>
+        <div style="position:absolute;top:0;bottom:0;left:0;width:5px;background:linear-gradient(to right,rgba(0,0,0,.15),transparent)"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;width:${plankW-16}px;margin:1px auto 0">${uLeg()}${uLeg()}</div>
-    </div>`;
+      <div style="display:flex;justify-content:space-between;width:${innerW-16}px;margin:1px auto 0">
+        ${['',''].map(()=>`<div style="position:relative;width:${legW}px;height:${legH}px">
+          <div style="position:absolute;top:0;left:0;width:${legBar}px;height:100%;background:#1a1a1a;border-radius:1px 1px 0 0"></div>
+          <div style="position:absolute;top:0;right:0;width:${legBar}px;height:100%;background:#1a1a1a;border-radius:1px 1px 0 0"></div>
+          <div style="position:absolute;bottom:0;left:0;right:0;height:${legBar}px;background:#1a1a1a;border-radius:0 0 2px 2px"></div>
+        </div>`).join('')}
+      </div>`;
 
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:0;align-self:center;overflow:visible">
-      <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35);margin-bottom:8px">BANKJE</div>
-      <div style="display:flex;flex-direction:column;align-items:center;width:${plankW}px;margin-bottom:3px">${slots}</div>
-      ${benchGraphic}
+    return `<div style="display:flex;align-items:flex-start;gap:4px;align-self:center">
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35);margin-bottom:8px">BANKJE</div>
+        <div style="display:flex;flex-direction:column;align-items:center">${slots}</div>
+      </div>
+      <div style="width:${benchVisW}px;height:${benchLen+labelH}px;position:relative;flex-shrink:0">
+        <div style="position:absolute;top:${labelH}px;left:50%;transform:translateX(-50%) rotate(90deg);transform-origin:center center;width:${innerW}px;height:${innerH}px">
+          ${plankInner}
+        </div>
+      </div>
     </div>`;
   }
 
