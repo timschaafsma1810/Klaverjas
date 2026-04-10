@@ -2558,6 +2558,98 @@ function openSpecialsDetail(type){
   openModal('modal-specials-detail');
 }
 
+function openRecordRanking(type){
+  const active=players.filter(p=>p.games>0);
+  function longestStreak(pid,t){
+    const form=getPlayerForm(pid);let max=0,cur=0;
+    form.results.forEach(r=>{if(r===t){cur++;if(cur>max)max=cur;}else cur=0;});
+    return max;
+  }
+  function av(p,sz=34){
+    if(!p) return '';
+    const img=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`<span style="font-size:${sz<30?11:13}px;font-weight:700">${p.name[0].toUpperCase()}</span>`;
+    return `<div style="width:${sz}px;height:${sz}px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--green-light));display:flex;align-items:center;justify-content:center;color:var(--green);flex-shrink:0;overflow:hidden;border:2px solid rgba(201,168,76,.4)">${img}</div>`;
+  }
+  function medal(i){return['🥇','🥈','🥉'][i]||`<span style="color:rgba(245,240,232,.4);font-size:12px">${i+1}.</span>`;}
+  function pRow(p,val,i){
+    return `<div class="stat-row">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:22px;text-align:center">${medal(i)}</div>
+        ${av(p)}
+        <span style="font-weight:600">${p.name}</span>
+      </div>
+      <span style="font-weight:700;color:var(--gold)">${val}</span>
+    </div>`;}
+  function dRow(d,val,i){
+    const p1=getPlayer(d.p1),p2=getPlayer(d.p2);if(!p1||!p2) return '';
+    return `<div class="stat-row">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:22px;text-align:center">${medal(i)}</div>
+        <div style="display:flex">${av(p1,28)}<div style="margin-left:-8px">${av(p2,28)}</div></div>
+        <span style="font-weight:600">${p1.name} & ${p2.name}</span>
+      </div>
+      <span style="font-weight:700;color:var(--gold)">${val}</span>
+    </div>`;}
+  function buildDuoMap(){
+    const dm={};
+    games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
+      const wA=[...g.wij,...(g.wijBench||[])],zA=[...g.zij,...(g.zijBench||[])];
+      const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
+      const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
+      [[wA,true],[zA,false]].forEach(([team,isWij])=>{
+        for(let a=0;a<team.length;a++) for(let b=a+1;b<team.length;b++){
+          const key=getDuoKey(team[a],team[b]);
+          if(!dm[key]) dm[key]={p1:Math.min(team[a],team[b]),p2:Math.max(team[a],team[b]),games:0,wins:0,pts:0,nat:0};
+          const d=dm[key];d.games++;d.pts+=(isWij?fw:fz)||0;
+          if(isWij?fw>fz:fz>fw) d.wins++;
+          g.rounds.forEach(r=>{if(r.special){const tag=isWij?'WIJ':'ZIJ';if(r.special.includes('NAT '+tag))d.nat++;}});
+        }
+      });
+    });
+    return Object.values(dm).filter(d=>d.games>0);
+  }
+  function buildVerspeeld(){
+    const v={};
+    games.filter(g=>!g.active&&!g.deletedAt&&g.completed&&g.rounds.length>=8).forEach(g=>{
+      const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
+      const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
+      let wH=0,zH=0;g.rounds.slice(0,8).forEach(r=>{wH+=r.w+r.rw;zH+=r.z+r.rz;});
+      if(wH>zH&&fw<fz)[...g.wij,...(g.wijBench||[])].forEach(id=>{v[id]=(v[id]||0)+1;});
+      else if(zH>wH&&fz<fw)[...g.zij,...(g.zijBench||[])].forEach(id=>{v[id]=(v[id]||0)+1;});
+    });
+    return v;
+  }
+  const cfgs={
+    wins:       {title:'🏆 Meeste overwinningen',       player:true, list:()=>[...active].sort((a,b)=>b.wins-a.wins),                                          fmt:p=>p.wins+'× gewonnen'},
+    highscore:  {title:'⭐ Hoogste score ooit',          player:true, list:()=>[...active].sort((a,b)=>b.highScore-a.highScore),                                fmt:p=>p.highScore+' punten'},
+    winrate:    {title:'📈 Beste winrate',               player:true, list:()=>active.filter(p=>p.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games)),    fmt:p=>Math.round(p.wins/p.games*100)+'% ('+p.games+' bomen)'},
+    games:      {title:'🎮 Meest actief',                player:true, list:()=>[...active].sort((a,b)=>b.games-a.games),                                        fmt:p=>p.games+' bomen'},
+    winstreak:  {title:'🔥 Langste winreeks ooit',       player:true, list:()=>[...active].map(p=>({...p,_v:longestStreak(p.id,'W')})).sort((a,b)=>b._v-a._v),fmt:p=>p._v+'× op rij'},
+    pit:        {title:'💥 Meeste pits',                 player:true, list:()=>[...active].sort((a,b)=>(b.pit||0)-(a.pit||0)).filter(p=>p.pit>0),              fmt:p=>(p.pit||0)+'× pit'},
+    kaap:       {title:'🦅 Vaakst gekaapt',              player:true, list:()=>[...active].sort((a,b)=>(b.roundsKaap||0)-(a.roundsKaap||0)).filter(p=>p.roundsKaap>0), fmt:p=>(p.roundsKaap||0)+'× gekaapt'},
+    nat:        {title:'💧 Vaakst nat',                  player:true, list:()=>[...active].sort((a,b)=>(b.natAsMaker||0)-(a.natAsMaker||0)).filter(p=>p.natAsMaker>0), fmt:p=>(p.natAsMaker||0)+'× nat'},
+    verz:       {title:'🔵 Vaakst verzaakt',             player:true, list:()=>[...active].sort((a,b)=>(b.verzAsMaker||0)-(a.verzAsMaker||0)).filter(p=>p.verzAsMaker>0), fmt:p=>(p.verzAsMaker||0)+'× verzaakt'},
+    losses:     {title:'💀 Meeste nederlagen',           player:true, list:()=>[...active].sort((a,b)=>b.losses-a.losses),                                     fmt:p=>p.losses+'× verloren'},
+    lossstreak: {title:'😰 Langste verliesreeks ooit',   player:true, list:()=>[...active].map(p=>({...p,_v:longestStreak(p.id,'V')})).sort((a,b)=>b._v-a._v),fmt:p=>p._v+'× op rij'},
+    verspeeld:  {title:'😬 Vaakst overwinning verspeeld',player:true, list:()=>{const v=buildVerspeeld();return[...active].filter(p=>v[p.id]>0).sort((a,b)=>(v[b.id]||0)-(v[a.id]||0)).map(p=>({...p,_v:v[p.id]}));}, fmt:p=>p._v+'× voorgestaan maar verloren'},
+    'duo-wins': {title:'🏆 Meeste winsten samen',        player:false,list:()=>buildDuoMap().sort((a,b)=>(b.wins||0)-(a.wins||0)).filter(d=>d.wins>0),         fmt:d=>d.wins+'× gewonnen'},
+    'duo-wr':   {title:'📈 Beste winrate samen',         player:false,list:()=>buildDuoMap().filter(d=>d.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games)), fmt:d=>Math.round(d.wins/d.games*100)+'% ('+d.games+' bomen)'},
+    'duo-games':{title:'🌳 Meest samen gespeeld',        player:false,list:()=>buildDuoMap().sort((a,b)=>b.games-a.games),                                     fmt:d=>d.games+' bomen'},
+    'duo-pts':  {title:'💰 Hoogste totaal punten samen', player:false,list:()=>buildDuoMap().sort((a,b)=>(b.pts||0)-(a.pts||0)).filter(d=>d.pts>0),            fmt:d=>d.pts.toLocaleString('nl-NL')+' punten'},
+    'duo-nat':  {title:'💧 Vaakst samen nat',            player:false,list:()=>buildDuoMap().sort((a,b)=>b.nat-a.nat).filter(d=>d.nat>0),                      fmt:d=>d.nat+'× nat'},
+  };
+  const cfg=cfgs[type];if(!cfg) return;
+  const list=cfg.list();
+  const rows=list.length
+    ?(cfg.player?list.map((p,i)=>pRow(p,cfg.fmt(p),i)):list.map((d,i)=>dRow(d,cfg.fmt(d),i))).join('')
+    :`<div style="color:rgba(245,240,232,.4);font-size:13px;padding:8px 0">Nog geen data</div>`;
+  document.getElementById('modal-specials-detail-content').innerHTML=`
+    <div class="modal-title">${cfg.title} <span class="modal-close" onclick="closeModal('modal-specials-detail')">✕</span></div>
+    ${rows}
+    <div style="height:4px"></div>`;
+  openModal('modal-specials-detail');
+}
+
 function getDuoKey(a,b){return [a,b].sort().join('-')}
 
 // Bepaal de actieve 2 spelers per team op het moment van ronde roundIdx (0-based)
@@ -3015,20 +3107,20 @@ function renderRecordsStats(){
     return max;
   }
   // ps = single player or array; getVal = fn(p)=>numeric for tie detection
-  function row(icon,label,ps,val,extra=''){
+  function row(icon,label,ps,val,extra='',oc=''){
     const arr=Array.isArray(ps)?ps:(ps?[ps]:[]);
     if(!arr.length||!arr[0]) return '';
-    const avatars=arr.map(p=>av(p)).join('');
     const names=arr.map(p=>p.name).join(', ');
-    return `<div class="stat-row">
+    const clickAttr=oc?` onclick="${oc}" style="cursor:pointer"`:'';
+    return `<div class="stat-row"${clickAttr}>
       <div style="display:flex;align-items:center;gap:10px">
-        <div style="display:flex;gap:-6px">${arr.length>1?`<div style="display:flex">${arr.map((p,i)=>`<div style="margin-left:${i?-10:0}px">${av(p)}</div>`).join('')}</div>`:av(arr[0])}</div>
+        <div style="display:flex">${arr.length>1?arr.map((p,i)=>`<div style="margin-left:${i?-10:0}px">${av(p)}</div>`).join(''):av(arr[0])}</div>
         <div>
           <div style="font-size:13px;font-weight:600">${icon} ${label}</div>
           <div style="font-size:11px;color:rgba(245,240,232,.4)">${names}${extra}</div>
         </div>
       </div>
-      <div style="font-weight:700;color:var(--gold);text-align:right">${val}</div>
+      <div style="font-weight:700;color:var(--gold);text-align:right">${val}${oc?' <span style="color:rgba(245,240,232,.3);font-size:10px">›</span>':''}</div>
     </div>`;
   }
   // Returns all players tied for first in a sorted array, using getVal to compare
@@ -3143,46 +3235,45 @@ function renderRecordsStats(){
   return boomRecordsHTML+`
     <div class="card">
       <div class="card-label">🏅 Erelijst</div>
-      ${row('🏆','Meeste overwinningen',tied(byWins,p=>p.wins),tied(byWins,p=>p.wins)[0]?.wins+'× gewonnen')}
-      ${row('⭐','Hoogste score ooit',tied(byHighScore,p=>p.highScore),tied(byHighScore,p=>p.highScore)[0]?.highScore+' punten')}
-      ${row('📈','Beste winrate',tied(byWr,p=>p.wins/p.games).slice(0,3),byWr[0]?Math.round(byWr[0].wins/byWr[0].games*100)+'%':'—',' (min. 2 bomen)')}
-      ${row('🎮','Meest actief',tied(byGames,p=>p.games),tied(byGames,p=>p.games)[0]?.games+' bomen gespeeld')}
-      ${(()=>{const t=tiedObj(byWinStreak,x=>x.s);return row('🔥','Langste winreeks ooit',t.map(x=>x.p),t[0]?.s+'× op rij');})()}
-      ${row('💥','Meeste pits',tied(byPit,p=>p.pit||0),(byPit[0]?.pit||0)+'× pit')}
-      ${row('🦅','Vaakst gekaapt',tied(byKaap,p=>p.roundsKaap||0),(byKaap[0]?.roundsKaap||0)+'× andermans beurt gepakt')}
+      ${row('🏆','Meeste overwinningen',tied(byWins,p=>p.wins),tied(byWins,p=>p.wins)[0]?.wins+'× gewonnen','',`openRecordRanking('wins')`)}
+      ${row('⭐','Hoogste score ooit',tied(byHighScore,p=>p.highScore),tied(byHighScore,p=>p.highScore)[0]?.highScore+' punten','',`openRecordRanking('highscore')`)}
+      ${row('📈','Beste winrate',tied(byWr,p=>p.wins/p.games).slice(0,3),byWr[0]?Math.round(byWr[0].wins/byWr[0].games*100)+'%':'—',' (min. 2 bomen)',`openRecordRanking('winrate')`)}
+      ${row('🎮','Meest actief',tied(byGames,p=>p.games),tied(byGames,p=>p.games)[0]?.games+' bomen gespeeld','',`openRecordRanking('games')`)}
+      ${(()=>{const t=tiedObj(byWinStreak,x=>x.s);return row('🔥','Langste winreeks ooit',t.map(x=>x.p),t[0]?.s+'× op rij','',`openRecordRanking('winstreak')`);})()}
+      ${row('💥','Meeste pits',tied(byPit,p=>p.pit||0),(byPit[0]?.pit||0)+'× pit','',`openRecordRanking('pit')`)}
+      ${row('🦅','Vaakst gekaapt',tied(byKaap,p=>p.roundsKaap||0),(byKaap[0]?.roundsKaap||0)+'× andermans beurt gepakt','',`openRecordRanking('kaap')`)}
       ${biggestComeback.team?row('📈','Grootste comeback',biggestComeback.team.map(getPlayer).filter(Boolean),'+'+biggestComeback.val+' punten achterstand omgebogen'):''}
     </div>
     <div class="card">
       <div class="card-label">😅 Twijfelachtige records</div>
-      ${row('💧','Vaakst nat',tied(byNat,p=>p.natAsMaker||0),(byNat[0]?.natAsMaker||0)+'× nat')}
-      ${row('🔵','Vaakst verzaakt',tied(byVerz,p=>p.verzAsMaker||0),(byVerz[0]?.verzAsMaker||0)+'× verzaakt')}
-      ${row('💀','Meeste nederlagen',tied(byLosses,p=>p.losses),tied(byLosses,p=>p.losses)[0]?.losses+'× verloren')}
-      ${(()=>{const t=tiedObj(byLossStreak,x=>x.s);return row('😰','Langste verliesreeks ooit',t.map(x=>x.p),t[0]?.s+'× op rij verloren');})()}
-      ${byVerspeeld[0]?row('😬','Vaakst overwinning verspeeld',byVerspeeld.filter(p=>(verspeeld[p.id]||0)===(verspeeld[byVerspeeld[0].id]||0)),(verspeeld[byVerspeeld[0].id]||0)+'× voorgestaan maar toch verloren'):''}
+      ${row('💧','Vaakst nat',tied(byNat,p=>p.natAsMaker||0),(byNat[0]?.natAsMaker||0)+'× nat','',`openRecordRanking('nat')`)}
+      ${row('🔵','Vaakst verzaakt',tied(byVerz,p=>p.verzAsMaker||0),(byVerz[0]?.verzAsMaker||0)+'× verzaakt','',`openRecordRanking('verz')`)}
+      ${row('💀','Meeste nederlagen',tied(byLosses,p=>p.losses),tied(byLosses,p=>p.losses)[0]?.losses+'× verloren','',`openRecordRanking('losses')`)}
+      ${(()=>{const t=tiedObj(byLossStreak,x=>x.s);return row('😰','Langste verliesreeks ooit',t.map(x=>x.p),t[0]?.s+'× op rij verloren','',`openRecordRanking('lossstreak')`);})()}
+      ${byVerspeeld[0]?row('😬','Vaakst overwinning verspeeld',byVerspeeld.filter(p=>(verspeeld[p.id]||0)===(verspeeld[byVerspeeld[0].id]||0)),(verspeeld[byVerspeeld[0].id]||0)+'× voorgestaan maar toch verloren','',`openRecordRanking('verspeeld')`):''}
       ${lowestScore.team?row('📉','Laagste eindscore',lowestScore.team.map(getPlayer).filter(Boolean),lowestScore.val+' punten'):''}
     </div>
     ${(()=>{
       // Duo records
+      // Build duo map incl. bench players (consistent with renderDuoStats)
       const duoMap={};
-      games.filter(g=>!g.active&&!g.deletedAt&&g.wij.length>=2&&g.zij.length>=2).forEach(g=>{
-        [[g.wij,true],[g.zij,false]].forEach(([team,isWij])=>{
-          const key=getDuoKey(team[0],team[1]);
-          if(!duoMap[key]) duoMap[key]={p1:team[0],p2:team[1],games:0,wins:0,nat:0,verz:0};
-          const d=duoMap[key]; d.games++;
-          const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
-          const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
-          if(isWij?fw>fz:fz>fw) d.wins++;
-          g.rounds.forEach(r=>{
-            if(!r.special) return;
-            const tag=isWij?'WIJ':'ZIJ';
-            if(r.special.includes('NAT '+tag)) d.nat++;
-            if(r.special.includes('VERZ '+tag)) d.verz++;
-          });
+      games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
+        const wA=[...g.wij,...(g.wijBench||[])],zA=[...g.zij,...(g.zijBench||[])];
+        const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
+        const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
+        [[wA,true],[zA,false]].forEach(([team,isWij])=>{
+          for(let a=0;a<team.length;a++) for(let b=a+1;b<team.length;b++){
+            const key=getDuoKey(team[a],team[b]);
+            if(!duoMap[key]) duoMap[key]={p1:Math.min(team[a],team[b]),p2:Math.max(team[a],team[b]),games:0,wins:0,pts:0,nat:0};
+            const d=duoMap[key];d.games++;d.pts+=(isWij?fw:fz)||0;
+            if(isWij?fw>fz:fz>fw) d.wins++;
+            g.rounds.forEach(r=>{if(r.special){const tag=isWij?'WIJ':'ZIJ';if(r.special.includes('NAT '+tag))d.nat++;}});
+          }
         });
       });
       const duos=Object.values(duoMap).filter(d=>d.games>0);
       if(!duos.length) return '';
-      function drow(icon,label,d,val){
+      function drow(icon,label,d,val,oc=''){
         if(!d) return '';
         const p1=getPlayer(d.p1),p2=getPlayer(d.p2);
         if(!p1||!p2) return '';
@@ -3190,7 +3281,8 @@ function renderRecordsStats(){
           const img=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`<span style="font-size:11px;font-weight:700">${p.name[0]}</span>`;
           return `<div style="width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,var(--gold),var(--green-light));display:flex;align-items:center;justify-content:center;color:var(--green);overflow:hidden;border:2px solid rgba(201,168,76,.4)">${img}</div>`;
         }).join('');
-        return `<div class="stat-row">
+        const clickAttr=oc?` onclick="${oc}" style="cursor:pointer"`:'';
+        return `<div class="stat-row"${clickAttr}>
           <div style="display:flex;align-items:center;gap:10px">
             <div style="display:flex">${imgs}</div>
             <div>
@@ -3198,23 +3290,21 @@ function renderRecordsStats(){
               <div style="font-size:11px;color:rgba(245,240,232,.4)">${p1.name} & ${p2.name}</div>
             </div>
           </div>
-          <div style="font-weight:700;color:var(--gold);text-align:right">${val}</div>
+          <div style="font-weight:700;color:var(--gold);text-align:right">${val}${oc?' <span style="color:rgba(245,240,232,.3);font-size:10px">›</span>':''}</div>
         </div>`;
       }
       const byWr=duos.filter(d=>d.games>=2).sort((a,b)=>(b.wins/b.games)-(a.wins/a.games));
       const byWins=[...duos].sort((a,b)=>(b.wins||0)-(a.wins||0));
       const byGames=[...duos].sort((a,b)=>b.games-a.games);
-      const byPts=[...duos].sort((a,b)=>(b.totalGamePoints||0)-(a.totalGamePoints||0));
+      const byPts=[...duos].sort((a,b)=>(b.pts||0)-(a.pts||0));
       const byNat=[...duos].sort((a,b)=>b.nat-a.nat);
-      const byPitDuo=[...duos].sort((a,b)=>(b.pit||0)-(a.pit||0));
       return `<div class="card">
         <div class="card-label">🤝 Duo records</div>
-        ${byWins[0]?.wins>0?drow('🏆','Meeste winsten samen',byWins[0],byWins[0].wins+'× gewonnen'):''}
-        ${byWr[0]?drow('📈','Beste winrate samen',byWr[0],Math.round(byWr[0].wins/byWr[0].games*100)+'% winrate'):''}
-        ${drow('🌳','Meest samen gespeeld',byGames[0],byGames[0]?.games+' bomen')}
-        ${byPts[0]?.totalGamePoints>0?drow('💰','Hoogste totaal punten samen',byPts[0],byPts[0].totalGamePoints.toLocaleString('nl-NL')+' punten'):''}
-        ${byNat[0]?.nat>0?drow('💧','Vaakst samen nat',byNat[0],byNat[0].nat+'× nat'):''}
-        ${byPitDuo[0]?.pit>0?drow('💥','Vaakst samen pit',byPitDuo[0],byPitDuo[0].pit+'× pit'):''}
+        ${byWins[0]?.wins>0?drow('🏆','Meeste winsten samen',byWins[0],byWins[0].wins+'× gewonnen',`openRecordRanking('duo-wins')`):''}
+        ${byWr[0]?drow('📈','Beste winrate samen',byWr[0],Math.round(byWr[0].wins/byWr[0].games*100)+'% winrate',`openRecordRanking('duo-wr')`):''}
+        ${drow('🌳','Meest samen gespeeld',byGames[0],byGames[0]?.games+' bomen',`openRecordRanking('duo-games')`)}
+        ${byPts[0]?.pts>0?drow('💰','Hoogste totaal punten samen',byPts[0],byPts[0].pts.toLocaleString('nl-NL')+' punten',`openRecordRanking('duo-pts')`):''}
+        ${byNat[0]?.nat>0?drow('💧','Vaakst samen nat',byNat[0],byNat[0].nat+'× nat',`openRecordRanking('duo-nat')`):''}
       </div>`;
     })()}`;
 }
@@ -3549,6 +3639,7 @@ Object.assign(window,{
   recalcPlayerStats,
   addBenchSlot,
   openSpecialsDetail,
+  openRecordRanking,
   openScoreInfo,
   showAchievementTip,
   openPlayerDuos,
