@@ -1063,63 +1063,63 @@ function openTafelModal(){
     </div>`;
   }
 
-  // Dugout (like football): covered bench box beside the table
-  function dugoutHTML(){
+  // Horizontal bench with wooden plank + black U-legs (like the photo), placed below table
+  function benchHTML(){
     if(!hasBench) return '';
     const n=allBench.length;
-    const avSz=n<=2?38:n===3?34:30;
-    const slotH=n<=2?58:n===3?52:46;
-    const nameH=14;
-    const topPad=10;const benchH=12;
-    const totalH=topPad+n*slotH+benchH;
-    const dW=72;
+    const avSz=38;const gap=10;const padH=20;
+    const benchInnerW=n*avSz+(n-1)*gap;
+    const plankW=Math.max(benchInnerW+padH*2,150);
+    const plankH=15;const legH=18;const legW=28;const legBar=4;
 
+    const rotations=[-9,-6,-7,-8];// slight lean per slot
     const slots=allBench.map(({id,isWij},i)=>{
       const p=getPlayer(id);const name=p?.name||'?';
       const tc=isWij?'#c9a84c':'rgba(245,240,232,.85)';
       const grad=isWij?'#c9a84c,#8b6914':'rgba(245,240,232,.82),rgba(150,130,90,.55)';
       const bc=isWij?'rgba(201,168,76,.8)':'rgba(245,240,232,.5)';
-      const top=topPad+i*slotH;
-      return `<div style="position:absolute;top:${top}px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:2px">
+      const rot=rotations[i%rotations.length];
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;transform:rotate(${rot}deg);transform-origin:bottom center">
         ${avatarHTML(p,avSz,grad,bc)}
-        <div style="font-size:8px;font-weight:700;color:${tc};max-width:${dW-4}px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+        <div style="font-size:9px;font-weight:700;color:${tc};max-width:${avSz+10}px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
       </div>`;
     }).join('');
 
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;align-self:center">
-      <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35)">BANKJE</div>
-      <div style="position:relative;width:${dW}px">
-        <!-- roof/canopy: slightly wider, grey like stadium concrete -->
-        <div style="position:absolute;top:-6px;left:-5px;right:-5px;height:10px;background:linear-gradient(to bottom,#787878,#505050);border-radius:3px 3px 0 0;box-shadow:0 -2px 6px rgba(0,0,0,.35)">
-          <div style="position:absolute;bottom:0;left:0;right:0;height:2px;background:rgba(0,0,0,.25)"></div>
-        </div>
-        <!-- dugout box -->
-        <div style="position:relative;height:${totalH}px;background:linear-gradient(to bottom,#1c3a24,#142018);border:1px solid rgba(80,140,90,.35);border-top:none;border-radius:0 0 5px 5px;overflow:hidden;box-shadow:inset 0 3px 10px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.4)">
-          <!-- side walls accent -->
-          <div style="position:absolute;top:0;left:0;bottom:0;width:3px;background:linear-gradient(to right,rgba(80,140,90,.25),transparent)"></div>
-          <div style="position:absolute;top:0;right:0;bottom:0;width:3px;background:linear-gradient(to left,rgba(80,140,90,.25),transparent)"></div>
-          <!-- bench seat at bottom -->
-          <div style="position:absolute;bottom:0;left:3px;right:3px;height:${benchH}px;background:linear-gradient(to bottom,#b87840,#7a3e18);border-radius:2px 2px 0 0">
-            <div style="position:absolute;top:0;left:0;right:0;height:2px;background:rgba(255,190,100,.25);border-radius:2px 2px 0 0"></div>
-            <div style="position:absolute;top:4px;left:6px;right:6px;height:1px;background:rgba(0,0,0,.2)"></div>
-            <div style="position:absolute;top:8px;left:6px;right:6px;height:1px;background:rgba(0,0,0,.15)"></div>
-          </div>
-          ${slots}
-        </div>
+    function uLeg(){
+      return `<div style="position:relative;width:${legW}px;height:${legH}px">
+        <div style="position:absolute;top:0;left:0;width:${legBar}px;height:${legH}px;background:#1a1a1a;border-radius:1px 1px 0 0"></div>
+        <div style="position:absolute;top:0;right:0;width:${legBar}px;height:${legH}px;background:#1a1a1a;border-radius:1px 1px 0 0"></div>
+        <div style="position:absolute;bottom:0;left:0;right:0;height:${legBar}px;background:#1a1a1a;border-radius:0 0 2px 2px"></div>
+      </div>`;
+    }
+
+    return `<div style="display:flex;flex-direction:column;align-items:center;margin:0 0 20px">
+      <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35);margin-bottom:10px">BANKJE</div>
+      <div style="display:flex;gap:${gap}px;align-items:flex-end;margin-bottom:4px;padding:0 ${padH}px">${slots}</div>
+      <div style="width:${plankW}px;height:${plankH}px;background:linear-gradient(to bottom,#e8cfa0 0%,#cca865 40%,#a87840 100%);border-radius:3px;box-shadow:0 4px 12px rgba(0,0,0,.4);position:relative;overflow:hidden">
+        <div style="position:absolute;top:0;left:0;right:0;height:4px;background:rgba(255,240,200,.45);border-radius:3px 3px 0 0"></div>
+        <div style="position:absolute;top:5px;left:0;right:0;height:1px;background:rgba(80,40,0,.12)"></div>
+        <div style="position:absolute;top:9px;left:15%;width:40%;height:1px;background:rgba(80,40,0,.1)"></div>
+        <div style="position:absolute;top:12px;left:0;right:0;height:1px;background:rgba(80,40,0,.08)"></div>
+        <div style="position:absolute;top:0;bottom:0;left:0;width:6px;background:linear-gradient(to right,rgba(0,0,0,.15),transparent)"></div>
+        <div style="position:absolute;top:0;bottom:0;right:0;width:6px;background:linear-gradient(to left,rgba(0,0,0,.1),transparent)"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;width:${plankW-18}px;margin-top:1px">
+        ${uLeg()}${uLeg()}
       </div>
     </div>`;
   }
 
-  // Table + bench in flex row: bench on right, table shifts left when bench present
+  // Table centered, bench below (when bench players exist)
   const tableHTML=`
-    <div style="display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:20px">
-      <div style="position:relative;width:196px;height:196px;flex-shrink:0">
+    <div style="margin-bottom:4px">
+      <div style="position:relative;width:196px;height:196px;margin:0 auto ${hasBench?'8px':'20px'}">
         <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:96px;height:96px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#1e5c34,#0f2d18);border:2px solid rgba(201,168,76,.35);box-shadow:0 0 20px rgba(0,0,0,.4)">
           <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;opacity:.3">♣</div>
         </div>
         ${seatHTML('bottom',0)}${seatHTML('left',1)}${seatHTML('top',2)}${seatHTML('right',3)}
       </div>
-      ${dugoutHTML()}
+      ${benchHTML()}
     </div>`;
 
   // Speler wissel section (only if bench, shown FIRST above volgorde)
