@@ -109,10 +109,10 @@ function recalcPlayerStats(){
     [...allWijIds,...allZijIds].forEach(pid=>{
       const p=getPlayer(pid);if(!p) return;
       const isWij=allWijIds.includes(pid);
-      if(draw) return; // Gelijke spellen tellen niet mee in stats
       p.games++;
       p.totalPointDiff+=(isWij?finalWij:finalZij)-(isWij?finalZij:finalWij);
-      if((isWij&&wijWon)||(!isWij&&!wijWon)) p.wins++;
+      if(draw) p.draws++;
+      else if((isWij&&wijWon)||(!isWij&&!wijWon)) p.wins++;
       else p.losses++;
       // Punten alleen van voltooide bomen
       if(g.completed){
@@ -565,9 +565,9 @@ function getPlayerForm(pid){
     const isWij=allWijFn(g).includes(pid);
     const fw=typeof g.finalWij==='number'?g.finalWij:g.scoreWij;
     const fz=typeof g.finalZij==='number'?g.finalZij:g.scoreZij;
-    if(fw===fz) return null; // Gelijke spellen overslaan
+    if(fw===fz) return 'G';
     return (isWij?fw>fz:fz>fw)?'W':'V';
-  }).filter(Boolean);
+  });
   const last5=results.slice(-5);
   let streak=0,streakType=null;
   if(results.length){
