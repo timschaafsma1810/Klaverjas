@@ -1063,25 +1063,26 @@ function openTafelModal(){
     </div>`;
   }
 
-  // Horizontal bench with wooden plank + black U-legs (like the photo), placed below table
+  // Bench on the RIGHT side of table: players stacked vertically, wooden plank + black U-legs below
   function benchHTML(){
     if(!hasBench) return '';
     const n=allBench.length;
-    const avSz=38;const gap=10;const padH=20;
-    const benchInnerW=n*avSz+(n-1)*gap;
-    const plankW=Math.max(benchInnerW+padH*2,150);
-    const plankH=15;const legH=18;const legW=28;const legBar=4;
+    // Fit bench height within ~table height (196px): players + plank(15) + legs(20) + label(22)
+    const maxContentH=196;const fixedH=57;// plank+legs+label+gaps
+    const slotH=Math.min(Math.floor((maxContentH-fixedH)/n),70);
+    const avSz=Math.min(Math.max(slotH-18,28),40);
+    const plankW=72;const plankH=15;const legH=18;const legW=26;const legBar=4;
 
-    const rotations=[-9,-6,-7,-8];// slight lean per slot
     const slots=allBench.map(({id,isWij},i)=>{
       const p=getPlayer(id);const name=p?.name||'?';
       const tc=isWij?'#c9a84c':'rgba(245,240,232,.85)';
       const grad=isWij?'#c9a84c,#8b6914':'rgba(245,240,232,.82),rgba(150,130,90,.55)';
       const bc=isWij?'rgba(201,168,76,.8)':'rgba(245,240,232,.5)';
-      const rot=rotations[i%rotations.length];
-      return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;transform:rotate(${rot}deg);transform-origin:bottom center">
+      // alternate slight lean direction
+      const rot=i%2===0?-7:-6;
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px;height:${slotH}px;justify-content:flex-end;transform:rotate(${rot}deg);transform-origin:bottom center">
         ${avatarHTML(p,avSz,grad,bc)}
-        <div style="font-size:9px;font-weight:700;color:${tc};max-width:${avSz+10}px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+        <div style="font-size:8px;font-weight:700;color:${tc};max-width:${plankW}px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
       </div>`;
     }).join('');
 
@@ -1093,10 +1094,9 @@ function openTafelModal(){
       </div>`;
     }
 
-    return `<div style="display:flex;flex-direction:column;align-items:center;margin:0 0 20px">
-      <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35);margin-bottom:10px">BANKJE</div>
-      <div style="display:flex;gap:${gap}px;align-items:flex-end;margin-bottom:4px;padding:0 ${padH}px">${slots}</div>
-      <div style="width:${plankW}px;height:${plankH}px;background:linear-gradient(to bottom,#e8cfa0 0%,#cca865 40%,#a87840 100%);border-radius:3px;box-shadow:0 4px 12px rgba(0,0,0,.4);position:relative;overflow:hidden">
+    // Bench graphic (plank + legs) rotated ~45° for perspective look
+    const benchGraphic=`<div style="transform:rotate(-42deg);transform-origin:center top;margin-top:2px;width:${plankW}px">
+      <div style="width:${plankW}px;height:${plankH}px;background:linear-gradient(to bottom,#e8cfa0 0%,#cca865 40%,#a87840 100%);border-radius:3px;box-shadow:0 4px 14px rgba(0,0,0,.45);position:relative;overflow:hidden">
         <div style="position:absolute;top:0;left:0;right:0;height:4px;background:rgba(255,240,200,.45);border-radius:3px 3px 0 0"></div>
         <div style="position:absolute;top:5px;left:0;right:0;height:1px;background:rgba(80,40,0,.12)"></div>
         <div style="position:absolute;top:9px;left:15%;width:40%;height:1px;background:rgba(80,40,0,.1)"></div>
@@ -1104,16 +1104,20 @@ function openTafelModal(){
         <div style="position:absolute;top:0;bottom:0;left:0;width:6px;background:linear-gradient(to right,rgba(0,0,0,.15),transparent)"></div>
         <div style="position:absolute;top:0;bottom:0;right:0;width:6px;background:linear-gradient(to left,rgba(0,0,0,.1),transparent)"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;width:${plankW-18}px;margin-top:1px">
-        ${uLeg()}${uLeg()}
-      </div>
+      <div style="display:flex;justify-content:space-between;width:${plankW-16}px;margin:1px auto 0">${uLeg()}${uLeg()}</div>
+    </div>`;
+
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:0;align-self:center;overflow:visible">
+      <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35);margin-bottom:8px">BANKJE</div>
+      <div style="display:flex;flex-direction:column;align-items:center;width:${plankW}px;margin-bottom:3px">${slots}</div>
+      ${benchGraphic}
     </div>`;
   }
 
-  // Table centered, bench below (when bench players exist)
+  // Table on left, bench on right (only when bench players exist)
   const tableHTML=`
-    <div style="margin-bottom:4px">
-      <div style="position:relative;width:196px;height:196px;margin:0 auto ${hasBench?'8px':'20px'}">
+    <div style="display:flex;align-items:center;justify-content:center;gap:12px;margin-bottom:20px;overflow:visible">
+      <div style="position:relative;width:196px;height:196px;flex-shrink:0">
         <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:96px;height:96px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#1e5c34,#0f2d18);border:2px solid rgba(201,168,76,.35);box-shadow:0 0 20px rgba(0,0,0,.4)">
           <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:20px;opacity:.3">♣</div>
         </div>
