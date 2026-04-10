@@ -1063,44 +1063,49 @@ function openTafelModal(){
     </div>`;
   }
 
-  // Side bench: vertical bench viewed from above (top-down perspective like the table)
-  function woodenBenchHTML(){
+  // Dugout (like football): covered bench box beside the table
+  function dugoutHTML(){
     if(!hasBench) return '';
     const n=allBench.length;
-    const avSz=n<=2?40:n===3?36:32;
-    const slotH=n<=2?60:n===3?54:48;
-    const benchH=n*slotH;
-    const plankW=64;
+    const avSz=n<=2?38:n===3?34:30;
+    const slotH=n<=2?58:n===3?52:46;
+    const nameH=14;
+    const topPad=10;const benchH=12;
+    const totalH=topPad+n*slotH+benchH;
+    const dW=72;
 
     const slots=allBench.map(({id,isWij},i)=>{
       const p=getPlayer(id);const name=p?.name||'?';
-      const tc=isWij?'#c9a84c':'rgba(245,240,232,.78)';
-      const grad=isWij?'#c9a84c,#8b6914':'rgba(245,240,232,.78),rgba(150,130,90,.55)';
-      const bc=isWij?'rgba(201,168,76,.75)':'rgba(245,240,232,.45)';
-      const topOff=i*slotH+Math.floor((slotH-avSz-14)/2);
-      return `<div style="position:absolute;top:${topOff}px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:2px">
+      const tc=isWij?'#c9a84c':'rgba(245,240,232,.85)';
+      const grad=isWij?'#c9a84c,#8b6914':'rgba(245,240,232,.82),rgba(150,130,90,.55)';
+      const bc=isWij?'rgba(201,168,76,.8)':'rgba(245,240,232,.5)';
+      const top=topPad+i*slotH;
+      return `<div style="position:absolute;top:${top}px;left:0;right:0;display:flex;flex-direction:column;align-items:center;gap:2px">
         ${avatarHTML(p,avSz,grad,bc)}
-        <div style="font-size:9px;font-weight:600;color:${tc};max-width:${plankW+6}px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
+        <div style="font-size:8px;font-weight:700;color:${tc};max-width:${dW-4}px;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</div>
       </div>`;
     }).join('');
 
-    const legSz=10;
-    return `<div style="display:flex;flex-direction:column;align-items:center;gap:6px;align-self:center">
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:4px;align-self:center">
       <div style="font-size:9px;font-weight:800;letter-spacing:1.5px;color:rgba(245,240,232,.35)">BANKJE</div>
-      <div style="position:relative;width:${plankW}px;height:${benchH+legSz*2}px">
-        <!-- bench plank: top-down view, brown wooden rectangle -->
-        <div style="position:absolute;top:${legSz}px;left:0;right:0;bottom:${legSz}px;background:linear-gradient(150deg,#d09050 0%,#9a5828 45%,#7a3e18 100%);border-radius:5px;box-shadow:0 4px 14px rgba(0,0,0,.5)">
-          <div style="position:absolute;top:0;left:0;bottom:0;width:5px;background:rgba(255,200,120,.22);border-radius:5px 0 0 5px"></div>
-          <div style="position:absolute;top:28%;left:12%;right:12%;height:1px;background:rgba(0,0,0,.18)"></div>
-          <div style="position:absolute;top:52%;left:12%;right:12%;height:1px;background:rgba(0,0,0,.14)"></div>
-          <div style="position:absolute;top:76%;left:12%;right:12%;height:1px;background:rgba(0,0,0,.1)"></div>
+      <div style="position:relative;width:${dW}px">
+        <!-- roof/canopy: slightly wider, grey like stadium concrete -->
+        <div style="position:absolute;top:-6px;left:-5px;right:-5px;height:10px;background:linear-gradient(to bottom,#787878,#505050);border-radius:3px 3px 0 0;box-shadow:0 -2px 6px rgba(0,0,0,.35)">
+          <div style="position:absolute;bottom:0;left:0;right:0;height:2px;background:rgba(0,0,0,.25)"></div>
         </div>
-        <!-- 4 leg dots at corners (top-down perspective) -->
-        <div style="position:absolute;top:2px;left:2px;width:${legSz}px;height:${legSz}px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7a3e18,#3a1a08);box-shadow:0 2px 5px rgba(0,0,0,.45)"></div>
-        <div style="position:absolute;top:2px;right:2px;width:${legSz}px;height:${legSz}px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7a3e18,#3a1a08);box-shadow:0 2px 5px rgba(0,0,0,.45)"></div>
-        <div style="position:absolute;bottom:2px;left:2px;width:${legSz}px;height:${legSz}px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7a3e18,#3a1a08);box-shadow:0 2px 5px rgba(0,0,0,.45)"></div>
-        <div style="position:absolute;bottom:2px;right:2px;width:${legSz}px;height:${legSz}px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#7a3e18,#3a1a08);box-shadow:0 2px 5px rgba(0,0,0,.45)"></div>
-        ${slots}
+        <!-- dugout box -->
+        <div style="position:relative;height:${totalH}px;background:linear-gradient(to bottom,#1c3a24,#142018);border:1px solid rgba(80,140,90,.35);border-top:none;border-radius:0 0 5px 5px;overflow:hidden;box-shadow:inset 0 3px 10px rgba(0,0,0,.5),0 4px 14px rgba(0,0,0,.4)">
+          <!-- side walls accent -->
+          <div style="position:absolute;top:0;left:0;bottom:0;width:3px;background:linear-gradient(to right,rgba(80,140,90,.25),transparent)"></div>
+          <div style="position:absolute;top:0;right:0;bottom:0;width:3px;background:linear-gradient(to left,rgba(80,140,90,.25),transparent)"></div>
+          <!-- bench seat at bottom -->
+          <div style="position:absolute;bottom:0;left:3px;right:3px;height:${benchH}px;background:linear-gradient(to bottom,#b87840,#7a3e18);border-radius:2px 2px 0 0">
+            <div style="position:absolute;top:0;left:0;right:0;height:2px;background:rgba(255,190,100,.25);border-radius:2px 2px 0 0"></div>
+            <div style="position:absolute;top:4px;left:6px;right:6px;height:1px;background:rgba(0,0,0,.2)"></div>
+            <div style="position:absolute;top:8px;left:6px;right:6px;height:1px;background:rgba(0,0,0,.15)"></div>
+          </div>
+          ${slots}
+        </div>
       </div>
     </div>`;
   }
@@ -1114,7 +1119,7 @@ function openTafelModal(){
         </div>
         ${seatHTML('bottom',0)}${seatHTML('left',1)}${seatHTML('top',2)}${seatHTML('right',3)}
       </div>
-      ${woodenBenchHTML()}
+      ${dugoutHTML()}
     </div>`;
 
   // Speler wissel section (only if bench, shown FIRST above volgorde)
