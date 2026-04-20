@@ -36,6 +36,8 @@ let _convexReady = false;
 let _localGamePending = null; // ID van lokaal aangemaakt spel nog niet bevestigd door Convex
 let _savePending = 0;         // Aantal saves in-flight — blokkeer onUpdate overschrijven
 let _pendingConvexData = null;// Gebufferde Convex update die wacht tot save klaar is
+let _saveDebounceTimer = null;// Debounce timer voor saveAll
+let _dirty = new Set();       // Welke sleutels zijn gewijzigd
 
 if (!_convexUrl) {
   console.error('VITE_CONVEX_URL niet ingesteld! Maak een .env.local bestand aan.');
@@ -53,30 +55,46 @@ let games=[];
 let current=null;
 let tournaments=[];
 
-async function saveAll(){
+// Markeer welke data gewijzigd is (zodat we alleen dat opslaan)
+function _markDirty(...keys){ keys.forEach(k=>_dirty.add(k)); }
+
+// saveAll: debounced. immediate=true voor kritieke momenten (beforeunload, spel afsluiten)
+function saveAll(immediate=false){
   if(!_convexReady) return;
+  _markDirty('players','games','tournaments'); // conservatief: alles dirty
+  if(immediate){
+    if(_saveDebounceTimer){clearTimeout(_saveDebounceTimer);_saveDebounceTimer=null;}
+    _doSaveAll();
+  } else {
+    if(_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
+    _saveDebounceTimer=setTimeout(()=>{_saveDebounceTimer=null;_doSaveAll();},1200);
+  }
+}
+
+async function _doSaveAll(){
+  if(!_convexReady||!_dirty.size) return;
+  const toSave=[..._dirty]; _dirty.clear();
   _savePending++;
   let saveOk=false;
   try {
-    await Promise.all([
-      _client.mutation(_api.data.saveData,{key:'kj_players',value:JSON.stringify(players)}),
-      _client.mutation(_api.data.saveData,{key:'kj_games',value:JSON.stringify(games)}),
-      _client.mutation(_api.data.saveData,{key:'kj_tournaments',value:JSON.stringify(tournaments)}),
-    ]);
+    const ops=[];
+    if(toSave.includes('players')){
+      // Foto's NIET naar Convex — die staan al in localStorage, scheelt megabytes per save
+      const pCloud=players.map(({photo,...p})=>p);
+      ops.push(_client.mutation(_api.data.saveData,{key:'kj_players',value:JSON.stringify(pCloud)}));
+    }
+    if(toSave.includes('games'))
+      ops.push(_client.mutation(_api.data.saveData,{key:'kj_games',value:JSON.stringify(games)}));
+    if(toSave.includes('tournaments'))
+      ops.push(_client.mutation(_api.data.saveData,{key:'kj_tournaments',value:JSON.stringify(tournaments)}));
+    await Promise.all(ops);
     saveOk=true;
   } catch(e){ console.error('Opslaan mislukt:',e); showToast('⚠️ Opslaan mislukt, probeer opnieuw',true); }
   finally{
     _savePending--;
-    if(_savePending===0 && _pendingConvexData){
-      if(saveOk){
-        // Save geslaagd: pas gebufferde Convex update toe
-        const d=_pendingConvexData;
-        _pendingConvexData=null;
-        _applyConvexData(d);
-      } else {
-        // Save mislukt: gooi stale Convex data weg, behoud lokale state
-        _pendingConvexData=null;
-      }
+    if(_savePending===0&&_pendingConvexData){
+      if(saveOk){const d=_pendingConvexData;_pendingConvexData=null;_applyConvexData(d);}
+      else _pendingConvexData=null;
     }
   }
 }
@@ -159,7 +177,7 @@ function recalcPlayerStats(){
 }
 
 // Auto-save on unload
-window.addEventListener('beforeunload',()=>{if(current&&current.active) saveAll()});
+window.addEventListener('beforeunload',()=>{if(current&&current.active) saveAll(true);});
 
 // ══════════════════════════════════════════
 //  NAVIGATION
@@ -823,7 +841,10 @@ function uploadPhoto(id,input){
       ctx.drawImage(img,ox,oy,s,s,0,0,SIZE,SIZE);
       const dataUrl=canvas.toDataURL('image/jpeg',0.75);
       const p=getPlayer(id);if(!p) return;
-      p.photo=dataUrl;saveAll();
+      p.photo=dataUrl;
+      // Foto lokaal opslaan (niet naar Convex — te groot)
+      try{localStorage.setItem('kj_photo_'+id,dataUrl);}catch(e){console.warn('Foto lokaal opslaan mislukt',e);}
+      saveAll();
       const av=document.getElementById('profile-av-'+id);
       if(av) av.innerHTML=`<img src="${dataUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
       renderPlayers();showToast('📷 Foto opgeslagen!');
@@ -3413,7 +3434,12 @@ function _refreshActiveView(){
 }
 
 function _applyConvexData(data){
-  players = data.kj_players ?? [];
+  const rawPlayers = data.kj_players ?? [];
+  // Foto's staan in localStorage (niet in Convex) — merge ze terug
+  players = rawPlayers.map(p=>{
+    const photo=localStorage.getItem('kj_photo_'+p.id);
+    return photo?{...p,photo}:p;
+  });
   games   = data.kj_games   ?? [];
   tournaments = data.kj_tournaments ?? [];
   // Migratie: als er nog een kj_current bestaat (oud formaat), neem die op in games
