@@ -55,13 +55,16 @@ let games=[];
 let current=null;
 let tournaments=[];
 
-// Markeer welke data gewijzigd is (zodat we alleen dat opslaan)
+// ── Save helpers ──────────────────────────────────────────────────────────────
+// Games zijn gesplitst in twee Convex-sleutels:
+//   kj_games_active  — alleen actieve potjes (~3-5 KB, wordt elke ronde bijgewerkt)
+//   kj_games_history — afgeronde/prullenbak potjes (groeit, maar nooit aangeraakt tijdens spel)
+// Foto's staan in localStorage, niet in Convex.
+
 function _markDirty(...keys){ keys.forEach(k=>_dirty.add(k)); }
 
-// saveAll: debounced. immediate=true voor kritieke momenten (beforeunload, spel afsluiten)
-function saveAll(immediate=false){
+function _triggerSave(immediate=false){
   if(!_convexReady) return;
-  _markDirty('players','games','tournaments'); // conservatief: alles dirty
   if(immediate){
     if(_saveDebounceTimer){clearTimeout(_saveDebounceTimer);_saveDebounceTimer=null;}
     _doSaveAll();
@@ -69,6 +72,17 @@ function saveAll(immediate=false){
     if(_saveDebounceTimer) clearTimeout(_saveDebounceTimer);
     _saveDebounceTimer=setTimeout(()=>{_saveDebounceTimer=null;_doSaveAll();},1200);
   }
+}
+
+// Specifieke save-functies — gebruik deze in plaats van saveAll() waar mogelijk
+function saveActiveGame(immediate=false){ _markDirty('games_active'); _triggerSave(immediate); }
+function saveHistory(immediate=false)   { _markDirty('games_history'); _triggerSave(immediate); }
+function savePlayers(immediate=false)   { _markDirty('players'); _triggerSave(immediate); }
+function saveTournaments(immediate=false){ _markDirty('tournaments'); _triggerSave(immediate); }
+// saveAll = alles dirty (voor wisselingen speler↔stats, nieuw spel, spel afsluiten)
+function saveAll(immediate=false){
+  _markDirty('players','games_active','games_history','tournaments');
+  _triggerSave(immediate);
 }
 
 async function _doSaveAll(){
@@ -79,12 +93,17 @@ async function _doSaveAll(){
   try {
     const ops=[];
     if(toSave.includes('players')){
-      // Foto's NIET naar Convex — die staan al in localStorage, scheelt megabytes per save
-      const pCloud=players.map(({photo,...p})=>p);
+      const pCloud=players.map(({photo,...p})=>p); // foto's niet naar Convex
       ops.push(_client.mutation(_api.data.saveData,{key:'kj_players',value:JSON.stringify(pCloud)}));
     }
-    if(toSave.includes('games'))
-      ops.push(_client.mutation(_api.data.saveData,{key:'kj_games',value:JSON.stringify(games)}));
+    if(toSave.includes('games_active')){
+      const active=games.filter(g=>g.active);
+      ops.push(_client.mutation(_api.data.saveData,{key:'kj_games_active',value:JSON.stringify(active)}));
+    }
+    if(toSave.includes('games_history')){
+      const history=games.filter(g=>!g.active);
+      ops.push(_client.mutation(_api.data.saveData,{key:'kj_games_history',value:JSON.stringify(history)}));
+    }
     if(toSave.includes('tournaments'))
       ops.push(_client.mutation(_api.data.saveData,{key:'kj_tournaments',value:JSON.stringify(tournaments)}));
     await Promise.all(ops);
@@ -510,7 +529,7 @@ function addPlayer(){
   players.push({id:Date.now(),name,created:new Date().toISOString(),photo:null,
     games:0,wins:0,losses:0,draws:0,nat:0,verz:0,pit:0,
     totalScore:0,totalCardScore:0,totalRoemScore:0,highScore:0,rounds:0,roundsPlayed:0,roundsKaap:0});
-  saveAll();
+  savePlayers();
   document.getElementById('inp-player-name').value='';
   closeModal('modal-add-player');
   renderPlayers();showToast('✓ '+name+' toegevoegd!');
@@ -844,7 +863,7 @@ function uploadPhoto(id,input){
       p.photo=dataUrl;
       // Foto lokaal opslaan (niet naar Convex — te groot)
       try{localStorage.setItem('kj_photo_'+id,dataUrl);}catch(e){console.warn('Foto lokaal opslaan mislukt',e);}
-      saveAll();
+      savePlayers(); // foto zit al in localStorage, alleen player-metadata refreshen
       const av=document.getElementById('profile-av-'+id);
       if(av) av.innerHTML=`<img src="${dataUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
       renderPlayers();showToast('📷 Foto opgeslagen!');
@@ -859,13 +878,13 @@ function renamePlayer(id){
   const name=prompt('Nieuwe naam voor '+p.name+':',p.name);
   if(!name||name.trim()===p.name) return;
   if(players.find(x=>x.id!==id&&x.name.toLowerCase()===name.trim().toLowerCase())) return showToast('Naam bestaat al',true);
-  p.name=name.trim();saveAll();renderPlayers();closeModal('modal-profile');showToast('✓ Naam gewijzigd');
+  p.name=name.trim();savePlayers();renderPlayers();closeModal('modal-profile');showToast('✓ Naam gewijzigd');
 }
 
 function deletePlayerConfirm(id){
   const p=getPlayer(id);
   doConfirm('Speler verwijderen',`Weet je zeker dat je ${p.name} wilt verwijderen? Spelgeschiedenis blijft bewaard.`,()=>{
-    players=players.filter(x=>x.id!==id);saveAll();closeModal('modal-profile');renderPlayers();showToast('Speler verwijderd');
+    players=players.filter(x=>x.id!==id);savePlayers();closeModal('modal-profile');renderPlayers();showToast('Speler verwijderd');
   });
 }
 
@@ -1252,7 +1271,7 @@ function confirmWissel(){
     }
   }
   g.wisselingen.push(wisseling);
-  saveAll();renderGame();showToast('✓ Wissel doorgevoerd!');openTafelModal();
+  saveActiveGame();renderGame();showToast('✓ Wissel doorgevoerd!');openTafelModal();
 }
 
 function openVolgordeModal(){
@@ -1272,7 +1291,7 @@ function swapVolgorde(team){
   // Herveranker de starter aan dezelfde positie-index zodat de rotatie intact blijft
   g.starter=so[starterPos];
   g.seatOrder=so;
-  saveAll();renderGame();showToast('✓ Volgorde gewisseld');openTafelModal();
+  saveActiveGame();renderGame();showToast('✓ Volgorde gewisseld');openTafelModal();
 }
 
 function openRemovePlayerModal(){
@@ -1337,7 +1356,7 @@ function confirmRemovePlayer(pid){
     const si=g.seatOrder.indexOf(pid);
     if(si>=0) g.seatOrder.splice(si,1);
   }
-  if(removed){saveAll();closeModal('modal-remove-player');renderGame();showToast('✓ Speler verwijderd');}
+  if(removed){saveActiveGame();closeModal('modal-remove-player');renderGame();showToast('✓ Speler verwijderd');}
 }
 
 function openAddPlayerToGameModal(){
@@ -1395,7 +1414,7 @@ function confirmAddPlayerToGame(){
   }
   if(team==='wij'){if(!g.wijBench)g.wijBench=[];g.wijBench.push(pid);}
   else{if(!g.zijBench)g.zijBench=[];g.zijBench.push(pid);}
-  saveAll();closeModal('modal-add-player-game');renderGame();
+  saveActiveGame();closeModal('modal-add-player-game');renderGame();
   showToast('✓ Speler toegevoegd!');
   setTimeout(()=>openWisselModal(),400);
 }
@@ -1436,7 +1455,7 @@ function renderGame(){
   if(active) active.style.display='block';
 
   const g=current;
-  if(refreshGameAutoSpecials(g)) recalcGameTotals(g), saveAll();
+  if(refreshGameAutoSpecials(g)) recalcGameTotals(g), saveActiveGame();
   // Alleen huidige actieve spelers tonen (niet historisch via getGameTeamNames)
   const wn=g.wij.map(id=>getPlayer(id)?.name||'?').join(' & ');
   const zn=g.zij.map(id=>getPlayer(id)?.name||'?').join(' & ');
@@ -1799,15 +1818,14 @@ function submitRound(){
 
   g.rounds.push(rondeData);
   recalcGameTotals(g);
-  saveAll();
 
-  // Update player roundsPlayed / roundsKaap
+  // Update player roundsPlayed / roundsKaap (in-memory alleen, wordt meegespaard bij saveActiveGame)
   const pSpeler=getPlayer(+spelId);
   if(pSpeler){
     pSpeler.roundsPlayed=(pSpeler.roundsPlayed||0)+1;
     if(String(spelId)!==String(uitId)) pSpeler.roundsKaap=(pSpeler.roundsKaap||0)+1;
-    saveAll();
   }
+  saveActiveGame(); // alleen actief spel (~3-5 KB), niet de volledige geschiedenis
 
   ['input-wij','input-zij','input-roem-wij','input-roem-zij'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('sel-speler').value='';
@@ -1862,7 +1880,7 @@ function undoLastRound(){
     p.roundsPlayed=Math.max(0,(p.roundsPlayed||0)-1);
     if(String(l.spelId)!==String(l.uitId)) p.roundsKaap=Math.max(0,(p.roundsKaap||0)-1);
   }
-  saveAll();renderGame();showToast('↩ Blaadje ongedaan gemaakt');
+  saveActiveGame();renderGame();showToast('↩ Blaadje ongedaan gemaakt');
 }
 
 // ══════════════════════════════════════════
@@ -1975,7 +1993,7 @@ function dropRound(toIdx){
   g.rounds.splice(toIdx,0,moved);
   // Recalc totals
   recalcGameTotals(g);
-  dragSrcIdx=null;saveAll();renderGame();
+  dragSrcIdx=null;saveActiveGame();renderGame();
 }
 
 function clampEditRound(team){
@@ -2021,7 +2039,7 @@ function clearEditSpecial(){
   const r=g.rounds[i];if(!r) return;
   r.special='';
   refreshRoundAutoSpecial(g,r);
-  recalcGameTotals(g);saveAll();
+  recalcGameTotals(g);saveActiveGame();
   document.getElementById('edit-special-row').style.display='none';
   renderGame();
   showToast('✓ Bijzonderheid verwijderd');
@@ -2053,7 +2071,7 @@ function saveEditedRound(){
   }
   refreshRoundAutoSpecial(g,r);
   recalcGameTotals(g);
-  saveAll();
+  saveActiveGame();
   closeModal('modal-edit-round');
   renderGame();
   showToast('✓ Blaadje '+(i+1)+' aangepast');
@@ -2128,7 +2146,7 @@ function endGame(){
   current=null;
   // Recalculate player stats after saving the completed game
   recalcPlayerStats();
-  saveAll();
+  saveAll(true); // spel afsluiten: alles opslaan (actief→history + spelers bijgewerkt)
   closeModal('modal-end-game');
   showToast('🏁 Boom opgeslagen!');
   switchView('home');
@@ -2183,7 +2201,7 @@ function renderHistory(){
 function deleteGame(id){
   doConfirm('Naar prullenbak','Dit spel wordt naar de prullenbak verplaatst. Je kunt het binnen 30 dagen herstellen.',()=>{
     const g=games.find(g=>String(g.id)===String(id));
-    if(g){ g.deletedAt=Date.now(); saveAll(); recalcPlayerStats(); renderHistory(); showToast('🗑 Naar prullenbak verplaatst'); }
+    if(g){ g.deletedAt=Date.now(); saveHistory(); recalcPlayerStats(); renderHistory(); showToast('🗑 Naar prullenbak verplaatst'); }
   });
 }
 
@@ -2192,7 +2210,7 @@ function openTrash(){
   const cutoff=Date.now()-30*24*60*60*1000;
   const before=games.length;
   games=games.filter(g=>!g.deletedAt||g.deletedAt>cutoff);
-  if(games.length!==before){saveAll();}
+  if(games.length!==before){saveHistory();}
 
   const trashed=games.filter(g=>g.deletedAt).sort((a,b)=>b.deletedAt-a.deletedAt);
   const el=document.getElementById('modal-trash-content');
@@ -2233,20 +2251,20 @@ function openTrash(){
 
 function restoreGame(id){
   const g=games.find(g=>String(g.id)===String(id));
-  if(g){delete g.deletedAt;saveAll();recalcPlayerStats();openTrash();renderHistory();showToast('↩ Spel hersteld');}
+  if(g){delete g.deletedAt;saveHistory();recalcPlayerStats();openTrash();renderHistory();showToast('↩ Spel hersteld');}
 }
 
 function permanentDeleteGame(id){
   doConfirm('Definitief verwijderen','Dit spel wordt permanent verwijderd en kan niet worden hersteld.',()=>{
     games=games.filter(g=>String(g.id)!==String(id));
-    saveAll();recalcPlayerStats();openTrash();renderHistory();showToast('🗑 Spel verwijderd');
+    saveHistory();recalcPlayerStats();openTrash();renderHistory();showToast('🗑 Spel verwijderd');
   });
 }
 
 function emptyTrash(){
   doConfirm('Prullenbak leegmaken','Alle spellen in de prullenbak worden permanent verwijderd.',()=>{
     games=games.filter(g=>!g.deletedAt);
-    saveAll();recalcPlayerStats();closeModal('modal-trash');renderHistory();showToast('🗑 Prullenbak leeggemaakt');
+    saveHistory();recalcPlayerStats();closeModal('modal-trash');renderHistory();showToast('🗑 Prullenbak leeggemaakt');
   });
 }
 
@@ -2261,7 +2279,7 @@ function editGameFromHistory(id){
     localStorage.setItem('kj_viewing_id',String(g.id));
     current=g;
     recalcPlayerStats();
-    saveAll();
+    saveAll(); // spel gaat van history naar active: beide schrijven
     switchView('game');
     showToast('Spel hervat voor bewerking');
   });
@@ -3435,12 +3453,18 @@ function _refreshActiveView(){
 
 function _applyConvexData(data){
   const rawPlayers = data.kj_players ?? [];
-  // Foto's staan in localStorage (niet in Convex) — merge ze terug
   players = rawPlayers.map(p=>{
     const photo=localStorage.getItem('kj_photo_'+p.id);
     return photo?{...p,photo}:p;
   });
-  games   = data.kj_games   ?? [];
+  // Nieuw formaat: kj_games_active + kj_games_history; legacy fallback: kj_games
+  if(data.kj_games_active!==undefined||data.kj_games_history!==undefined){
+    const active  = data.kj_games_active  ?? [];
+    const history = data.kj_games_history ?? [];
+    games = [...active, ...history];
+  } else {
+    games = data.kj_games ?? []; // legacy
+  }
   tournaments = data.kj_tournaments ?? [];
   // Migratie: als er nog een kj_current bestaat (oud formaat), neem die op in games
   const legacy = data.kj_current;
@@ -3518,14 +3542,14 @@ function startTournament(){
   if(tournaments.some(t=>t.active)) return showToast('Er is al een actief toernooi. Sluit dat eerst af.',true);
   const datum=document.getElementById('inp-toernooi-datum')?.value||new Date().toISOString().split('T')[0];
   tournaments.push({id:Date.now(),name:naam,date:datum,active:true,gameIds:[]});
-  saveAll();closeModal('modal-new-toernooi');renderToernooi();showToast('🏆 Toernooi gestart!');
+  saveTournaments();closeModal('modal-new-toernooi');renderToernooi();showToast('🏆 Toernooi gestart!');
 }
 
 function endTournament(){
   const t=tournaments.find(x=>x.active);if(!t) return;
   doConfirm('Toernooi afsluiten','Weet je zeker dat je het toernooi wilt afsluiten?',()=>{
     t.active=false;t.endDate=new Date().toISOString();
-    saveAll();renderToernooi();showToast('Toernooi afgesloten');
+    saveTournaments();renderToernooi();showToast('Toernooi afgesloten');
   });
 }
 
@@ -3614,7 +3638,7 @@ function openTournamentDetail(id){
 function deleteTournament(id){
   doConfirm('Toernooi verwijderen','Dit verwijdert het toernooi maar niet de afzonderlijke bomen.',()=>{
     tournaments=tournaments.filter(t=>String(t.id)!==String(id));
-    saveAll();closeModal('modal-toernooi-detail');renderToernooi();showToast('Toernooi verwijderd');
+    saveTournaments();closeModal('modal-toernooi-detail');renderToernooi();showToast('Toernooi verwijderd');
   });
 }
 
