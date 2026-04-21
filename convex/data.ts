@@ -2,6 +2,7 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
 // Haal alle gedeelde data op (players, games, current)
+// Foto-URLs worden opgelost via Convex File Storage en meegestuurd als kj_photo_urls
 export const getData = query({
   args: {},
   handler: async (ctx) => {
@@ -14,6 +15,15 @@ export const getData = query({
         result[row.key] = null;
       }
     }
+    // Resolve photo URLs for players with a photoId (Convex File Storage)
+    const players = (result["kj_players"] as { id: number; photoId?: string }[]) ?? [];
+    const photoUrls: Record<string, string | null> = {};
+    for (const p of players) {
+      if (p.photoId) {
+        photoUrls[p.photoId] = await ctx.storage.getUrl(p.photoId as any);
+      }
+    }
+    result["kj_photo_urls"] = photoUrls;
     return result;
   },
 });
@@ -30,6 +40,26 @@ export const saveData = mutation({
       await ctx.db.patch(existing._id, { value });
     } else {
       await ctx.db.insert("shared", { key, value });
+    }
+  },
+});
+
+// Genereer een tijdelijke upload-URL voor Convex File Storage
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+// Verwijder een foto uit Convex File Storage (bij nieuwe upload of speler verwijderen)
+export const deletePhoto = mutation({
+  args: { storageId: v.string() },
+  handler: async (ctx, { storageId }) => {
+    try {
+      await ctx.storage.delete(storageId as any);
+    } catch {
+      // Bestand bestaat niet meer — geen probleem
     }
   },
 });

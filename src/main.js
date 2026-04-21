@@ -848,25 +848,53 @@ function uploadPhoto(id,input){
   const reader=new FileReader();
   reader.onload=e=>{
     const img=new Image();
-    img.onload=()=>{
+    img.onload=async()=>{
+      // Resize naar 200×200 JPEG
       const SIZE=200;
       const canvas=document.createElement('canvas');
       canvas.width=SIZE;canvas.height=SIZE;
-      const ctx=canvas.getContext('2d');
-      // Crop to square from center, then draw at SIZE×SIZE
+      const c=canvas.getContext('2d');
       const s=Math.min(img.width,img.height);
-      const ox=(img.width-s)/2;
-      const oy=(img.height-s)/2;
-      ctx.drawImage(img,ox,oy,s,s,0,0,SIZE,SIZE);
+      const ox=(img.width-s)/2,oy=(img.height-s)/2;
+      c.drawImage(img,ox,oy,s,s,0,0,SIZE,SIZE);
       const dataUrl=canvas.toDataURL('image/jpeg',0.75);
+
       const p=getPlayer(id);if(!p) return;
+
+      // Direct in UI tonen zodat het snel aanvoelt
       p.photo=dataUrl;
-      // Foto lokaal opslaan (niet naar Convex — te groot)
-      try{localStorage.setItem('kj_photo_'+id,dataUrl);}catch(e){console.warn('Foto lokaal opslaan mislukt',e);}
-      savePlayers(); // foto zit al in localStorage, alleen player-metadata refreshen
       const av=document.getElementById('profile-av-'+id);
       if(av) av.innerHTML=`<img src="${dataUrl}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`;
-      renderPlayers();showToast('📷 Foto opgeslagen!');
+      showToast('📷 Bezig met uploaden…');
+
+      try{
+        // 1. Haal upload-URL op van Convex File Storage
+        const uploadUrl=await _client.mutation(_api.data.generateUploadUrl,{});
+        // 2. Upload de afbeelding als blob
+        const blob=await(await fetch(dataUrl)).blob();
+        const resp=await fetch(uploadUrl,{method:'POST',headers:{'Content-Type':'image/jpeg'},body:blob});
+        if(!resp.ok) throw new Error('Upload mislukt: '+resp.status);
+        const {storageId}=await resp.json();
+        // 3. Verwijder eventuele oude foto uit storage
+        if(p.photoId){
+          try{await _client.mutation(_api.data.deletePhoto,{storageId:p.photoId});}catch{}
+        }
+        // 4. Sla storageId op op player (geen base64 meer in Convex)
+        p.photoId=storageId;
+        delete p.photo; // wordt ingevuld via kj_photo_urls bij volgende onUpdate
+        // Lokale cache zodat foto direct zichtbaar blijft op dit apparaat
+        try{localStorage.setItem('kj_photo_'+id,dataUrl);}catch{}
+        savePlayers();
+        renderPlayers();
+        showToast('📷 Foto opgeslagen!');
+      } catch(err){
+        console.error('Foto uploaden mislukt:',err);
+        // Fallback: bewaar base64 in localStorage zoals voorheen
+        try{localStorage.setItem('kj_photo_'+id,dataUrl);}catch{}
+        savePlayers();
+        renderPlayers();
+        showToast('📷 Foto lokaal opgeslagen (geen sync)');
+      }
     };
     img.src=e.target.result;
   };
@@ -3453,9 +3481,13 @@ function _refreshActiveView(){
 
 function _applyConvexData(data){
   const rawPlayers = data.kj_players ?? [];
+  const photoUrls = data.kj_photo_urls ?? {}; // storageId → CDN-URL (opgelost in getData)
   players = rawPlayers.map(p=>{
-    const photo=localStorage.getItem('kj_photo_'+p.id);
-    return photo?{...p,photo}:p;
+    // Prioriteit: Convex File Storage URL > localStorage (oud/fallback) > geen foto
+    const cloudUrl = p.photoId ? photoUrls[p.photoId] : null;
+    const localUrl = localStorage.getItem('kj_photo_'+p.id);
+    const photo = cloudUrl || localUrl || null;
+    return photo ? {...p, photo} : p;
   });
   // Nieuw formaat: kj_games_active + kj_games_history; legacy fallback: kj_games
   if(data.kj_games_active!==undefined||data.kj_games_history!==undefined){
