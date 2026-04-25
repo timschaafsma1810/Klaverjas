@@ -2224,7 +2224,7 @@ function renderHistory(){
   const el=document.getElementById('history-list');
   if(!games.length){el.innerHTML=`<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nog geen spellen</div><div class="empty-sub">Start je eerste boom!</div></div>`;return}
   const trashedCount=games.filter(g=>g.deletedAt).length;
-  el.innerHTML=[...games].filter(g=>!g.deletedAt).reverse().map(g=>{
+  el.innerHTML=[...games].filter(g=>!g.deletedAt).sort((a,b)=>new Date(b.endDate||b.date)-new Date(a.endDate||a.date)).map(g=>{
     const wn=[...g.wij,...(g.wijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
     const zn=[...g.zij,...(g.zijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
     const d=new Date(g.date).toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
@@ -2708,7 +2708,11 @@ function openRecordRanking(type){
   function buildDuoMap(){
     const dm={};
     games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
-      const wA=[...g.wij,...(g.wijBench||[])],zA=[...g.zij,...(g.zijBench||[])];
+      // Alleen bankspelers die daadwerkelijk zijn ingewisseld tellen mee
+      const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
+      const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+      const wA=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
+      const zA=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
       const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
       const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
       [[wA,true],[zA,false]].forEach(([team,isWij])=>{
@@ -3653,6 +3657,114 @@ function getTournamentStandings(t){
     .sort((a,b)=>b.wins-a.wins||b.points-a.points);
 }
 
+// Gedeelde content-builder voor toernooi tabs (hoofdpagina + detail modal)
+function _buildTournamentTabContent(t, tab){
+  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id)));
+  const bomen=tourGames.length;
+  if(tab==='standen'){
+    const standings=getTournamentStandings(t);
+    return `<div style="font-size:12px;color:rgba(245,240,232,.4);margin-bottom:10px">${bomen} boom${bomen!==1?'en':''} gespeeld</div>
+    ${standings.length?standings.map((s,i)=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(201,168,76,.1)">
+        <div style="font-size:18px;font-weight:700;color:var(--gold);width:24px">${i+1}</div>
+        <div style="flex:1">
+          <div style="font-size:14px;font-weight:600">${s.player.name}</div>
+          <div style="font-size:11px;color:rgba(245,240,232,.4)">${s.games} bomen · ${s.wins}× gewonnen · ${s.points} punten</div>
+        </div>
+        <div style="font-size:20px">${i===0?'🥇':i===1?'🥈':i===2?'🥉':''}</div>
+      </div>
+    `).join(''):`<div style="color:rgba(245,240,232,.4);font-size:13px;padding:10px 0">Nog geen bomen gespeeld in dit toernooi</div>`}`;
+  }
+  if(tab==='stats'){
+    const pStats={};
+    tourGames.forEach(g=>{
+      const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
+      const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+      const allWij=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
+      const allZij=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
+      [...allWij,...allZij].forEach(pid=>{
+        if(!pStats[pid]) pStats[pid]={games:0,wins:0,losses:0,totalScore:0,nat:0,verz:0,pit:0,totalRoem:0};
+        const isWij=allWij.includes(pid);
+        const myScore=isWij?(g.finalWij??g.scoreWij??0):(g.finalZij??g.scoreZij??0);
+        const oppScore=isWij?(g.finalZij??g.scoreZij??0):(g.finalWij??g.scoreWij??0);
+        pStats[pid].games++;pStats[pid].totalScore+=myScore;
+        if(myScore>oppScore) pStats[pid].wins++;else if(myScore<oppScore) pStats[pid].losses++;
+        if(g.completed){
+          g.rounds.forEach(r=>{
+            const sp=(r.special||'').toUpperCase();
+            if(isWij){if(sp.includes('NAT WIJ'))pStats[pid].nat++;if(sp.includes('VERZ WIJ'))pStats[pid].verz++;if(sp.includes('PIT WIJ'))pStats[pid].pit++;}
+            else{if(sp.includes('NAT ZIJ'))pStats[pid].nat++;if(sp.includes('VERZ ZIJ'))pStats[pid].verz++;if(sp.includes('PIT ZIJ'))pStats[pid].pit++;}
+            const award=getRoundAward(g,r);
+            pStats[pid].totalRoem+=isWij?award.roemWij:award.roemZij;
+          });
+        }
+      });
+    });
+    const sorted=Object.entries(pStats).map(([id,s])=>({p:getPlayer(+id),...s})).filter(x=>x.p).sort((a,b)=>b.wins-a.wins||b.totalScore-a.totalScore);
+    if(!sorted.length) return `<div style="color:rgba(245,240,232,.4);font-size:13px;padding:10px 0">Nog geen bomen gespeeld in dit toernooi</div>`;
+    // Totalen per categorie
+    let totNat=0,totVerz=0,totPit=0;
+    tourGames.forEach(g=>g.rounds.forEach(r=>{if(r.special){const sp=r.special.toUpperCase();if(sp.includes('NAT'))totNat++;if(sp.includes('VERZ'))totVerz++;if(sp.includes('PIT'))totPit++;}}));
+    return `${sorted.map((s,i)=>{
+      const wr=s.games?Math.round(s.wins/s.games*100):0;
+      const avgPts=s.games?Math.round(s.totalScore/s.games):0;
+      const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+      const specials=[s.nat?`<span style="color:#e74c3c">💧${s.nat}</span>`:'',s.verz?`<span style="color:#3498db">🔵${s.verz}</span>`:'',s.pit?`<span style="color:var(--gold)">💥${s.pit}</span>`:''].filter(Boolean).join(' ');
+      return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid rgba(201,168,76,.1)">
+        <div style="font-size:16px;font-weight:700;color:var(--gold);width:24px">${i+1}</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px">
+            <span style="font-size:14px;font-weight:600">${s.p.name}</span><span style="font-size:14px">${medal}</span>
+            <span style="margin-left:auto;font-size:12px;font-weight:700;color:var(--gold)">${wr}%</span>
+          </div>
+          <div style="font-size:11px;color:rgba(245,240,232,.4);display:flex;gap:8px;flex-wrap:wrap">
+            <span>${s.wins}W/${s.losses}V</span><span>gem. ${avgPts} ptn</span>${specials?`<span>${specials}</span>`:''}${s.totalRoem?`<span>✨${s.totalRoem} roem</span>`:''}
+          </div>
+        </div>
+      </div>`;
+    }).join('')}
+    ${totNat||totVerz||totPit?`<div style="margin-top:10px;padding:8px 10px;background:rgba(201,168,76,.06);border-radius:8px;border:1px solid rgba(201,168,76,.15);font-size:12px;color:rgba(245,240,232,.5);display:flex;gap:14px">
+      <span>Totaal:</span>${totNat?`<span>💧 ${totNat} nat</span>`:''}${totVerz?`<span>🔵 ${totVerz} verz</span>`:''}${totPit?`<span>💥 ${totPit} pit</span>`:''}
+    </div>`:''}`;
+  }
+  if(tab==='bomen'){
+    const sorted=[...tourGames].sort((a,b)=>new Date(b.endDate||b.date)-new Date(a.endDate||a.date));
+    if(!sorted.length) return `<div style="color:rgba(245,240,232,.4);font-size:13px;padding:10px 0">Nog geen bomen gespeeld in dit toernooi</div>`;
+    return sorted.map(g=>{
+      const wn=[...g.wij,...(g.wijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
+      const zn=[...g.zij,...(g.zijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
+      const fw=g.finalWij??g.scoreWij??0;const fz=g.finalZij??g.scoreZij??0;
+      const won=fw>fz;
+      const dd=new Date(g.date).toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
+      return `<div style="padding:8px 0;border-bottom:1px solid rgba(201,168,76,.1)">
+        <div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:2px">${dd} · ${g.rounds.length} blaadjes${g.completed?' 🌳':''}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;font-size:12px">${wn}</div>
+          <div style="font-size:15px;font-weight:800;color:${won?'var(--gold)':'rgba(245,240,232,.6)'}">${fw}</div>
+          <div style="font-size:11px;color:rgba(245,240,232,.4)">–</div>
+          <div style="font-size:15px;font-weight:800;color:${!won&&fw!==fz?'var(--gold)':'rgba(245,240,232,.6)'}">${fz}</div>
+          <div style="flex:1;font-size:12px;text-align:right">${zn}</div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  return '';
+}
+
+let _activeTournamentTab='standen';
+function switchActiveTournamentTab(tab){
+  _activeTournamentTab=tab;
+  const t=tournaments.find(x=>x.active);if(!t) return;
+  const tabBar=document.getElementById('active-toernooi-tabs');
+  const content=document.getElementById('toernooi-standings');
+  if(tabBar){
+    tabBar.querySelectorAll('.filter-chip').forEach(el=>{
+      el.classList.toggle('active',el.dataset.tab===tab);
+    });
+  }
+  if(content) content.innerHTML=_buildTournamentTabContent(t,tab);
+}
+
 function renderToernooi(){
   const activeTournament=tournaments.find(t=>t.active);
   const activeSection=document.getElementById('toernooi-active-section');
@@ -3661,21 +3773,13 @@ function renderToernooi(){
     document.getElementById('toernooi-active-name').textContent=activeTournament.name;
     const d=new Date(activeTournament.date).toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
     document.getElementById('toernooi-active-date').textContent=d;
-    const standings=getTournamentStandings(activeTournament);
-    const bomen=games.filter(g=>activeTournament.gameIds.includes(String(g.id))).length;
-    document.getElementById('toernooi-standings').innerHTML=`
-      <div style="font-size:12px;color:rgba(245,240,232,.4);margin-bottom:10px">${bomen} boom${bomen!==1?'en':''} gespeeld</div>
-      ${standings.length?standings.map((s,i)=>`
-        <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(201,168,76,.1)">
-          <div style="font-size:18px;font-weight:700;color:var(--gold);width:24px">${i+1}</div>
-          <div style="flex:1">
-            <div style="font-size:14px;font-weight:600">${s.player.name}</div>
-            <div style="font-size:11px;color:rgba(245,240,232,.4)">${s.games} bomen · ${s.wins}× gewonnen · ${s.points} punten</div>
-          </div>
-          <div style="font-size:20px">${i===0?'🥇':i===1?'🥈':i===2?'🥉':''}</div>
-        </div>
-      `).join(''):`<div style="color:rgba(245,240,232,.4);font-size:13px;padding:10px 0">Nog geen bomen gespeeld in dit toernooi</div>`}
-    `;
+    // Tab bar
+    const tabBarEl=document.getElementById('active-toernooi-tabs');
+    if(tabBarEl){
+      const tabs=[{k:'standen',l:'🏆 Standen'},{k:'stats',l:'📊 Stats'},{k:'bomen',l:'🌳 Bomen'}];
+      tabBarEl.innerHTML=tabs.map(tb=>`<div class="filter-chip ${_activeTournamentTab===tb.k?'active':''}" data-tab="${tb.k}" onclick="switchActiveTournamentTab('${tb.k}')">${tb.l}</div>`).join('');
+    }
+    document.getElementById('toernooi-standings').innerHTML=_buildTournamentTabContent(activeTournament,_activeTournamentTab);
   }
   const pastTournaments=[...tournaments].filter(t=>!t.active).reverse();
   const histList=document.getElementById('toernooi-history-list');
@@ -3691,120 +3795,17 @@ function renderToernooi(){
 
 function renderTournamentDetailTab(id,tab){
   const t=tournaments.find(x=>String(x.id)===String(id));if(!t) return;
-  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id)));
-  const bomen=tourGames.length;
+  const bomen=games.filter(g=>t.gameIds.includes(String(g.id))).length;
   const d=new Date(t.date).toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-
   const tabs=[{k:'standen',l:'🏆 Standen'},{k:'stats',l:'📊 Statistieken'},{k:'bomen',l:'🌳 Bomen'}];
   const tabBar=`<div style="display:flex;gap:6px;margin-bottom:16px;overflow-x:auto">
     ${tabs.map(tb=>`<div class="filter-chip ${tab===tb.k?'active':''}" onclick="renderTournamentDetailTab('${id}','${tb.k}')" style="white-space:nowrap">${tb.l}</div>`).join('')}
   </div>`;
-
-  let content='';
-  if(tab==='standen'){
-    const standings=getTournamentStandings(t);
-    content=standings.length?standings.map((s,i)=>`
-      <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(201,168,76,.1)">
-        <div style="font-size:20px;font-weight:700;color:var(--gold);width:28px">${i+1}</div>
-        <div style="flex:1">
-          <div style="font-size:15px;font-weight:600">${s.player.name}</div>
-          <div style="font-size:12px;color:rgba(245,240,232,.4)">${s.games} bomen · ${s.wins}× gewonnen · ${s.losses}× verloren · ${s.points} punten</div>
-        </div>
-        <div style="font-size:22px">${i===0?'🥇':i===1?'🥈':i===2?'🥉':''}</div>
-      </div>
-    `).join(''):`<div style="color:rgba(245,240,232,.4);padding:12px 0">Geen data beschikbaar</div>`;
-  } else if(tab==='stats'){
-    // Per-speler stats binnen dit toernooi
-    const pStats={};
-    tourGames.forEach(g=>{
-      const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
-      const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
-      const allWij=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
-      const allZij=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
-      [...allWij,...allZij].forEach(pid=>{
-        if(!pStats[pid]) pStats[pid]={games:0,wins:0,losses:0,totalScore:0,nat:0,verz:0,pit:0,rounds:0,totalRoem:0};
-        const isWij=allWij.includes(pid);
-        const myScore=isWij?(g.finalWij??g.scoreWij??0):(g.finalZij??g.scoreZij??0);
-        const oppScore=isWij?(g.finalZij??g.scoreZij??0):(g.finalWij??g.scoreWij??0);
-        pStats[pid].games++;
-        pStats[pid].totalScore+=myScore;
-        if(myScore>oppScore) pStats[pid].wins++;
-        else if(myScore<oppScore) pStats[pid].losses++;
-        if(g.completed){
-          pStats[pid].rounds+=g.rounds.length;
-          g.rounds.forEach(r=>{
-            const sp=(r.special||'').toUpperCase();
-            if(isWij){if(sp.includes('NAT WIJ'))pStats[pid].nat++;if(sp.includes('VERZ WIJ'))pStats[pid].verz++;if(sp.includes('PIT WIJ'))pStats[pid].pit++;}
-            else{if(sp.includes('NAT ZIJ'))pStats[pid].nat++;if(sp.includes('VERZ ZIJ'))pStats[pid].verz++;if(sp.includes('PIT ZIJ'))pStats[pid].pit++;}
-            const award=getRoundAward(g,r);
-            pStats[pid].totalRoem+=isWij?award.roemWij:award.roemZij;
-          });
-        }
-      });
-    });
-    const sorted=Object.entries(pStats)
-      .map(([id,s])=>({p:getPlayer(+id),...s}))
-      .filter(x=>x.p)
-      .sort((a,b)=>b.wins-a.wins||b.totalScore-a.totalScore);
-    if(!sorted.length){content=`<div style="color:rgba(245,240,232,.4);padding:12px 0">Geen data beschikbaar</div>`;}
-    else{
-      content=`<div style="margin-bottom:8px">
-        ${sorted.map((s,i)=>{
-          const wr=s.games?Math.round(s.wins/s.games*100):0;
-          const avgPts=s.games?Math.round(s.totalScore/s.games):0;
-          const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
-          return `<div style="padding:10px 0;border-bottom:1px solid rgba(201,168,76,.1)">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
-              <div style="font-size:18px;font-weight:700;color:var(--gold);width:24px">${i+1}</div>
-              <div style="font-size:14px;font-weight:600">${s.p.name}</div>
-              <div style="font-size:16px">${medal}</div>
-              <div style="margin-left:auto;font-size:13px;font-weight:700;color:var(--gold)">${wr}% W</div>
-            </div>
-            <div style="display:flex;gap:8px;flex-wrap:wrap;padding-left:32px">
-              <span style="font-size:11px;color:rgba(245,240,232,.5)">⚔️ ${s.wins}W / ${s.losses}V</span>
-              <span style="font-size:11px;color:rgba(245,240,232,.5)">📊 gem. ${avgPts} ptn</span>
-              ${s.nat?`<span style="font-size:11px;color:#e74c3c">💧 ${s.nat}× nat</span>`:''}
-              ${s.verz?`<span style="font-size:11px;color:#3498db">🔵 ${s.verz}× verz</span>`:''}
-              ${s.pit?`<span style="font-size:11px;color:var(--gold)">💥 ${s.pit}× pit</span>`:''}
-              ${s.totalRoem?`<span style="font-size:11px;color:rgba(245,240,232,.5)">✨ ${s.totalRoem} roem</span>`:''}
-            </div>
-          </div>`;
-        }).join('')}
-      </div>
-      <div style="margin-top:10px;padding:10px;background:rgba(201,168,76,.06);border-radius:8px;border:1px solid rgba(201,168,76,.2)">
-        <div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:8px;letter-spacing:1px">TOERNOOI TOTALEN</div>
-        <div style="display:flex;flex-wrap:wrap;gap:12px">
-          ${(()=>{let nat=0,verz=0,pit=0;tourGames.forEach(g=>g.rounds.forEach(r=>{if(r.special){if(r.special.toUpperCase().includes('NAT'))nat++;if(r.special.toUpperCase().includes('VERZ'))verz++;if(r.special.toUpperCase().includes('PIT'))pit++;}}));return `<span style="font-size:12px;color:rgba(245,240,232,.6)">💧 ${nat} nat</span><span style="font-size:12px;color:rgba(245,240,232,.6)">🔵 ${verz} verz</span><span style="font-size:12px;color:rgba(245,240,232,.6)">💥 ${pit} pit</span>`;})()}
-          <span style="font-size:12px;color:rgba(245,240,232,.6)">🌳 ${bomen} bomen</span>
-        </div>
-      </div>`;
-    }
-  } else if(tab==='bomen'){
-    const sorted=[...tourGames].sort((a,b)=>new Date(b.date)-new Date(a.date));
-    content=sorted.length?sorted.map(g=>{
-      const wn=[...g.wij,...(g.wijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
-      const zn=[...g.zij,...(g.zijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
-      const fw=g.finalWij??g.scoreWij??0;const fz=g.finalZij??g.scoreZij??0;
-      const won=fw>fz;
-      const dd=new Date(g.date).toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
-      return `<div style="padding:10px 0;border-bottom:1px solid rgba(201,168,76,.1)">
-        <div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:2px">${dd} · ${g.rounds.length} blaadjes${g.completed?' 🌳':''}</div>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="flex:1;font-size:13px">${wn}</div>
-          <div style="font-size:16px;font-weight:800;color:${won?'var(--gold)':'rgba(245,240,232,.6)'}">${fw}</div>
-          <div style="font-size:11px;color:rgba(245,240,232,.4)">–</div>
-          <div style="font-size:16px;font-weight:800;color:${!won&&fw!==fz?'var(--gold)':'rgba(245,240,232,.6)'}">${fz}</div>
-          <div style="flex:1;font-size:13px;text-align:right">${zn}</div>
-        </div>
-      </div>`;
-    }).join(''):`<div style="color:rgba(245,240,232,.4);padding:12px 0">Geen bomen beschikbaar</div>`;
-  }
-
   document.getElementById('modal-toernooi-detail-content').innerHTML=`
     <div class="modal-title">${t.name} <span class="modal-close" onclick="closeModal('modal-toernooi-detail')">✕</span></div>
     <div style="font-size:12px;color:rgba(245,240,232,.4);margin-bottom:12px">${d} · ${bomen} bomen gespeeld</div>
     ${tabBar}
-    ${content}
+    ${_buildTournamentTabContent(t,tab)}
     <div style="height:14px"></div>
     <button class="btn btn-red" onclick="deleteTournament('${id}')">Toernooi verwijderen</button>
   `;
@@ -3929,6 +3930,7 @@ Object.assign(window,{
   startTournament,
   endTournament,
   renderToernooi,
+  switchActiveTournamentTab,
   openTournamentDetail,
   renderTournamentDetailTab,
   deleteTournament,
