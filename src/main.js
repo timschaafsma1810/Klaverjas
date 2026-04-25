@@ -2203,10 +2203,21 @@ function endGame(){
   // Maker stats will also be recalculated by recalcPlayerStats().
 
   g.completed=completed;
-  // Game zit al in de games-array (actieve games worden daar bijgehouden)
-  // Voeg toe aan actief toernooi indien aanwezig
+  // Voeg toe aan actief toernooi — alleen als het spel is aangemaakt ná het begin van het toernooi
+  // (bewerkte oude spellen horen niet automatisch bij het huidige toernooi)
   const activeTournament=tournaments.find(t=>t.active);
-  if(activeTournament&&!activeTournament.gameIds.includes(String(g.id))) activeTournament.gameIds.push(String(g.id));
+  if(activeTournament&&!activeTournament.gameIds.includes(String(g.id))){
+    const tournamentStart=new Date(activeTournament.date).getTime();
+    const gameStart=new Date(g.date).getTime();
+    if(gameStart>=tournamentStart) activeTournament.gameIds.push(String(g.id));
+  }
+  // Opruimen: verwijder gameIds van spellen die vóór het toernooi zijn gestart (correctie voor eerder opgeslagen fouten)
+  if(activeTournament){
+    activeTournament.gameIds=activeTournament.gameIds.filter(gid=>{
+      const gg=games.find(x=>String(x.id)===gid);
+      return !gg||new Date(gg.date)>=new Date(activeTournament.date);
+    });
+  }
   localStorage.removeItem('kj_viewing_id');
   current=null;
   // Recalculate player stats after saving the completed game
@@ -3630,7 +3641,8 @@ function endTournament(){
 }
 
 function getTournamentStandings(t){
-  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id)));
+  const tStart=new Date(t.date).getTime();
+  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id))&&new Date(g.date).getTime()>=tStart);
   const stats={};
   tourGames.forEach(g=>{
     // Inclusief bankspelers die daadwerkelijk zijn ingewisseld (zelfde logica als recalcPlayerStats)
@@ -3659,7 +3671,8 @@ function getTournamentStandings(t){
 
 // Gedeelde content-builder voor toernooi tabs (hoofdpagina + detail modal)
 function _buildTournamentTabContent(t, tab){
-  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id)));
+  const tStart=new Date(t.date).getTime();
+  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id))&&new Date(g.date).getTime()>=tStart);
   const bomen=tourGames.length;
   if(tab==='standen'){
     const standings=getTournamentStandings(t);
@@ -3784,7 +3797,8 @@ function renderToernooi(){
   const pastTournaments=[...tournaments].filter(t=>!t.active).reverse();
   const histList=document.getElementById('toernooi-history-list');
   if(histList) histList.innerHTML=pastTournaments.length?pastTournaments.map(t=>{
-    const bomen=games.filter(g=>t.gameIds.includes(String(g.id))).length;
+    const tS=new Date(t.date).getTime();
+    const bomen=games.filter(g=>t.gameIds.includes(String(g.id))&&new Date(g.date).getTime()>=tS).length;
     const d=new Date(t.date).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
     return `<div class="game-tile" onclick="openTournamentDetail('${t.id}')">
       <div class="game-tile-header"><span class="game-date">${d}</span><span style="font-size:11px;color:rgba(245,240,232,.4)">${bomen} bomen</span></div>
@@ -3795,7 +3809,8 @@ function renderToernooi(){
 
 function renderTournamentDetailTab(id,tab){
   const t=tournaments.find(x=>String(x.id)===String(id));if(!t) return;
-  const bomen=games.filter(g=>t.gameIds.includes(String(g.id))).length;
+  const tStart=new Date(t.date).getTime();
+  const bomen=games.filter(g=>t.gameIds.includes(String(g.id))&&new Date(g.date).getTime()>=tStart).length;
   const d=new Date(t.date).toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   const tabs=[{k:'standen',l:'🏆 Standen'},{k:'stats',l:'📊 Statistieken'},{k:'bomen',l:'🌳 Bomen'}];
   const tabBar=`<div style="display:flex;gap:6px;margin-bottom:16px;overflow-x:auto">
