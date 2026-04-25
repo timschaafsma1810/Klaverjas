@@ -3768,22 +3768,22 @@ function _buildTournamentTabContent(t, tab){
         const oppScore=isWij?(g.finalZij??g.scoreZij??0):(g.finalWij??g.scoreWij??0);
         pStats[pid].games++;pStats[pid].totalScore+=myScore;
         if(myScore>oppScore) pStats[pid].wins++;else if(myScore<oppScore) pStats[pid].losses++;
-        if(g.completed){
-          const teamKey=isWij?'wij':'zij';
-          g.rounds.forEach((r,idx)=>{
-            // Nat/pit/verz: alleen voor actief spelende spelers op dat blaadje
-            if(r.special){
-              const active=getActiveTeamAtRound(g,teamKey,idx);
-              if(active.includes(pid)){
-                const sp=r.special.toUpperCase();
-                if(isWij){if(sp.includes('NAT WIJ'))pStats[pid].nat++;if(sp.includes('VERZ WIJ'))pStats[pid].verz++;if(sp.includes('PIT WIJ'))pStats[pid].pit++;}
-                else{if(sp.includes('NAT ZIJ'))pStats[pid].nat++;if(sp.includes('VERZ ZIJ'))pStats[pid].verz++;if(sp.includes('PIT ZIJ'))pStats[pid].pit++;}
-              }
+        // Nat/pit/verz: altijd tellen (ook in afgebroken bomen)
+        const teamKey=isWij?'wij':'zij';
+        g.rounds.forEach((r,idx)=>{
+          if(r.special){
+            const active=getActiveTeamAtRound(g,teamKey,idx);
+            if(active.includes(pid)){
+              const sp=r.special.toUpperCase();
+              if(isWij){if(sp.includes('NAT WIJ'))pStats[pid].nat++;if(sp.includes('VERZ WIJ'))pStats[pid].verz++;if(sp.includes('PIT WIJ'))pStats[pid].pit++;}
+              else{if(sp.includes('NAT ZIJ'))pStats[pid].nat++;if(sp.includes('VERZ ZIJ'))pStats[pid].verz++;if(sp.includes('PIT ZIJ'))pStats[pid].pit++;}
             }
+          }
+          if(g.completed){
             const award=getRoundAward(g,r);
             pStats[pid].totalRoem+=isWij?award.roemWij:award.roemZij;
-          });
-        }
+          }
+        });
       });
     });
     const sorted=Object.entries(pStats).map(([id,s])=>({p:getPlayer(+id),...s})).filter(x=>x.p).sort((a,b)=>b.wins-a.wins||b.totalScore-a.totalScore);
