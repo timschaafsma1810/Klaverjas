@@ -139,8 +139,8 @@ function recalcPlayerStats(){
     const draw=finalWij===finalZij;
     function countSp(tag){return g.rounds.filter(r=>r.special&&r.special.includes(tag)).length;}
     // Alleen bankspelers die daadwerkelijk zijn gewisseld tellen mee
-    const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
-    const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+    const wijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2]).filter(Boolean));
+    const zijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.zijIn,w.zijIn2]).filter(Boolean));
     const allWijIds=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
     const allZijIds=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
     [...allWijIds,...allZijIds].forEach(pid=>{
@@ -591,7 +591,7 @@ function getGameTeamIds(g, team){
   const isWij=team==='wij';
   const starters=isWij?g.wij:g.zij;
   const bench=isWij?(g.wijBench||[]):(g.zijBench||[]);
-  const everIn=new Set((g.wisselingen||[]).map(w=>isWij?w.wijIn:w.zijIn).filter(Boolean));
+  const everIn=new Set((g.wisselingen||[]).flatMap(w=>isWij?[w.wijIn,w.wijIn2]:[w.zijIn,w.zijIn2]).filter(Boolean));
   return [...new Set([...starters,...bench.filter(id=>everIn.has(id))])];
 }
 function getGameTeamNames(g, team){
@@ -1631,7 +1631,7 @@ function renderGame(){
     if(removeBtn){
       const allIds=[...g.wij,...g.zij,...(g.wijBench||[]),...(g.zijBench||[])];
       const playedIds=new Set(g.rounds.map(r=>String(r.spelId||r.spelWij||r.spelZij)).filter(Boolean));
-      const everIn=new Set([...(g.wisselingen||[]).map(w=>w.wijIn),...(g.wisselingen||[]).map(w=>w.zijIn)].filter(Boolean).map(String));
+      const everIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2,w.zijIn,w.zijIn2]).filter(Boolean).map(String));
       const everOut=new Set([...(g.wisselingen||[]).map(w=>w.wijUit),...(g.wisselingen||[]).map(w=>w.zijUit)].filter(Boolean).map(String));
       const activeCount=g.wij.length+g.zij.length;
       const hasRemovable=allIds.some(pid=>{
@@ -2752,8 +2752,8 @@ function openRecordRanking(type){
   function buildDuoMap(){
     const dm={};
     games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
-      const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
-      const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+      const wijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2]).filter(Boolean));
+      const zijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.zijIn,w.zijIn2]).filter(Boolean));
       const wA=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
       const zA=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
       const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
@@ -3458,8 +3458,8 @@ function renderRecordsStats(){
       // Build duo map incl. bench players (consistent with renderDuoStats)
       const duoMap={};
       games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
-        const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
-        const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+        const wijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2]).filter(Boolean));
+        const zijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.zijIn,w.zijIn2]).filter(Boolean));
         const wA=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
         const zA=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
         const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
@@ -3706,8 +3706,8 @@ function getTournamentStandings(t){
   const stats={};
   tourGames.forEach(g=>{
     // Inclusief bankspelers die daadwerkelijk zijn ingewisseld (zelfde logica als recalcPlayerStats)
-    const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
-    const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+    const wijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2]).filter(Boolean));
+    const zijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.zijIn,w.zijIn2]).filter(Boolean));
     const allWijIds=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
     const allZijIds=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
     [allWijIds,allZijIds].forEach((team,ti)=>{
@@ -3751,8 +3751,8 @@ function _buildTournamentTabContent(t, tab){
   if(tab==='stats'){
     const pStats={};
     tourGames.forEach(g=>{
-      const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
-      const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+      const wijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2]).filter(Boolean));
+      const zijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.zijIn,w.zijIn2]).filter(Boolean));
       const allWij=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
       const allZij=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
       [...allWij,...allZij].forEach(pid=>{
