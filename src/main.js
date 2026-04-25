@@ -139,10 +139,10 @@ function recalcPlayerStats(){
     const draw=finalWij===finalZij;
     function countSp(tag){return g.rounds.filter(r=>r.special&&r.special.includes(tag)).length;}
     // Alleen bankspelers die daadwerkelijk zijn gewisseld tellen mee
-    const wijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2]).filter(Boolean));
-    const zijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.zijIn,w.zijIn2]).filter(Boolean));
-    const allWijIds=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
-    const allZijIds=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
+    const wijEverOut=new Set((g.wisselingen||[]).flatMap(w=>[w.wijUit,w.wijUit2]).filter(Boolean));
+    const zijEverOut=new Set((g.wisselingen||[]).flatMap(w=>[w.zijUit,w.zijUit2]).filter(Boolean));
+    const allWijIds=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverOut.has(id))];
+    const allZijIds=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverOut.has(id))];
     [...allWijIds,...allZijIds].forEach(pid=>{
       const p=getPlayer(pid);if(!p) return;
       const isWij=allWijIds.includes(pid);
@@ -591,8 +591,8 @@ function getGameTeamIds(g, team){
   const isWij=team==='wij';
   const starters=isWij?g.wij:g.zij;
   const bench=isWij?(g.wijBench||[]):(g.zijBench||[]);
-  const everIn=new Set((g.wisselingen||[]).flatMap(w=>isWij?[w.wijIn,w.wijIn2]:[w.zijIn,w.zijIn2]).filter(Boolean));
-  return [...new Set([...starters,...bench.filter(id=>everIn.has(id))])];
+  const everOut=new Set((g.wisselingen||[]).flatMap(w=>isWij?[w.wijUit,w.wijUit2]:[w.zijUit,w.zijUit2]).filter(Boolean));
+  return [...new Set([...starters,...bench.filter(id=>everOut.has(id))])];
 }
 function getGameTeamNames(g, team){
   return getGameTeamIds(g,team).map(id=>getPlayer(id)?.name||'?').join(' & ');
@@ -2752,10 +2752,10 @@ function openRecordRanking(type){
   function buildDuoMap(){
     const dm={};
     games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
-      const wijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2]).filter(Boolean));
-      const zijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.zijIn,w.zijIn2]).filter(Boolean));
-      const wA=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
-      const zA=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
+      const wijEverOut=new Set((g.wisselingen||[]).flatMap(w=>[w.wijUit,w.wijUit2]).filter(Boolean));
+      const zijEverOut=new Set((g.wisselingen||[]).flatMap(w=>[w.zijUit,w.zijUit2]).filter(Boolean));
+      const wA=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverOut.has(id))];
+      const zA=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverOut.has(id))];
       const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
       const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
       // Winst/punten: voor alle paren die samen hebben meegespeeld
@@ -2801,10 +2801,10 @@ function openRecordRanking(type){
       games.filter(g=>!g.active&&!g.deletedAt&&g.completed).forEach(g=>{
         const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
         const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
-        const wijIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
-        const zijIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
-        entries.push({ids:[...g.wij,...(g.wijBench||[]).filter(id=>wijIn.has(id))],score:fw});
-        entries.push({ids:[...g.zij,...(g.zijBench||[]).filter(id=>zijIn.has(id))],score:fz});
+        const wijEverOut2=new Set((g.wisselingen||[]).flatMap(w=>[w.wijUit,w.wijUit2]).filter(Boolean));
+        const zijEverOut2=new Set((g.wisselingen||[]).flatMap(w=>[w.zijUit,w.zijUit2]).filter(Boolean));
+        entries.push({ids:[...g.wij,...(g.wijBench||[]).filter(id=>wijEverOut2.has(id))],score:fw});
+        entries.push({ids:[...g.zij,...(g.zijBench||[]).filter(id=>zijEverOut2.has(id))],score:fz});
       });
       return entries.sort((a,b)=>b.score-a.score);
     }, fmt:e=>e.score+' punten'},
@@ -2843,16 +2843,22 @@ function getDuoKey(a,b){return [a,b].sort().join('-')}
 function getActiveTeamsAtRound(g, roundIdx){
   let wij=[...g.wij], zij=[...g.zij];
   const ws=g.wisselingen||[];
-  // Undo alle wisselingen om startopstelling te reconstrueren
+  // Undo alle wisselingen (inclusief dubbele) om startopstelling te reconstrueren
   [...ws].reverse().forEach(w=>{
-    if(w.wijIn!==undefined){const i=wij.indexOf(w.wijIn);if(i>=0)wij[i]=w.wijUit;}
-    if(w.zijIn!==undefined){const i=zij.indexOf(w.zijIn);if(i>=0)zij[i]=w.zijUit;}
+    for(const sfx of ['','2']){
+      const wi=w['wijIn'+sfx],wu=w['wijUit'+sfx],zi=w['zijIn'+sfx],zu=w['zijUit'+sfx];
+      if(wi!==undefined&&wu!==undefined){const i=wij.indexOf(wi);if(i>=0)wij[i]=wu;}
+      if(zi!==undefined&&zu!==undefined){const i=zij.indexOf(zi);if(i>=0)zij[i]=zu;}
+    }
   });
   // Replay wisselingen tot en met roundIdx
   ws.forEach(w=>{
     if(w.blaadje<=roundIdx){
-      if(w.wijIn!==undefined){const i=wij.indexOf(w.wijUit);if(i>=0)wij[i]=w.wijIn;}
-      if(w.zijIn!==undefined){const i=zij.indexOf(w.zijUit);if(i>=0)zij[i]=w.zijIn;}
+      for(const sfx of ['','2']){
+        const wi=w['wijIn'+sfx],wu=w['wijUit'+sfx],zi=w['zijIn'+sfx],zu=w['zijUit'+sfx];
+        if(wi!==undefined&&wu!==undefined){const i=wij.indexOf(wu);if(i>=0)wij[i]=wi;}
+        if(zi!==undefined&&zu!==undefined){const i=zij.indexOf(zu);if(i>=0)zij[i]=zi;}
+      }
     }
   });
   return {wij,zij};
@@ -3377,10 +3383,10 @@ function renderRecordsStats(){
   games.filter(g=>!g.active&&!g.deletedAt&&g.completed).forEach(g=>{
     const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
     const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
-    const wijIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
-    const zijIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
-    const wTeam=[...g.wij,...(g.wijBench||[]).filter(id=>wijIn.has(id))].map(getPlayer).filter(Boolean);
-    const zTeam=[...g.zij,...(g.zijBench||[]).filter(id=>zijIn.has(id))].map(getPlayer).filter(Boolean);
+    const wijEverOutR=new Set((g.wisselingen||[]).flatMap(w=>[w.wijUit,w.wijUit2]).filter(Boolean));
+    const zijEverOutR=new Set((g.wisselingen||[]).flatMap(w=>[w.zijUit,w.zijUit2]).filter(Boolean));
+    const wTeam=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverOutR.has(id))].map(getPlayer).filter(Boolean);
+    const zTeam=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverOutR.has(id))].map(getPlayer).filter(Boolean);
     if(fw>teamHighScore.score) teamHighScore={players:wTeam,score:fw};
     else if(fw===teamHighScore.score) teamHighScore={players:wTeam,score:fw}; // gelijkstand: meest recente
     if(fz>teamHighScore.score) teamHighScore={players:zTeam,score:fz};
@@ -3458,10 +3464,10 @@ function renderRecordsStats(){
       // Build duo map incl. bench players (consistent with renderDuoStats)
       const duoMap={};
       games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
-        const wijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2]).filter(Boolean));
-        const zijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.zijIn,w.zijIn2]).filter(Boolean));
-        const wA=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
-        const zA=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
+        const wijEverOut=new Set((g.wisselingen||[]).flatMap(w=>[w.wijUit,w.wijUit2]).filter(Boolean));
+        const zijEverOut=new Set((g.wisselingen||[]).flatMap(w=>[w.zijUit,w.zijUit2]).filter(Boolean));
+        const wA=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverOut.has(id))];
+        const zA=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverOut.has(id))];
         const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
         const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
         [[wA,true],[zA,false]].forEach(([team,isWij])=>{
@@ -3706,10 +3712,10 @@ function getTournamentStandings(t){
   const stats={};
   tourGames.forEach(g=>{
     // Inclusief bankspelers die daadwerkelijk zijn ingewisseld (zelfde logica als recalcPlayerStats)
-    const wijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2]).filter(Boolean));
-    const zijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.zijIn,w.zijIn2]).filter(Boolean));
-    const allWijIds=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
-    const allZijIds=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
+    const wijEverOut=new Set((g.wisselingen||[]).flatMap(w=>[w.wijUit,w.wijUit2]).filter(Boolean));
+    const zijEverOut=new Set((g.wisselingen||[]).flatMap(w=>[w.zijUit,w.zijUit2]).filter(Boolean));
+    const allWijIds=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverOut.has(id))];
+    const allZijIds=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverOut.has(id))];
     [allWijIds,allZijIds].forEach((team,ti)=>{
       const isWij=ti===0;
       const myScore=isWij?(g.finalWij??g.scoreWij??0):(g.finalZij??g.scoreZij??0);
@@ -3751,10 +3757,10 @@ function _buildTournamentTabContent(t, tab){
   if(tab==='stats'){
     const pStats={};
     tourGames.forEach(g=>{
-      const wijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.wijIn,w.wijIn2]).filter(Boolean));
-      const zijEverIn=new Set((g.wisselingen||[]).flatMap(w=>[w.zijIn,w.zijIn2]).filter(Boolean));
-      const allWij=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
-      const allZij=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
+      const wijEverOut=new Set((g.wisselingen||[]).flatMap(w=>[w.wijUit,w.wijUit2]).filter(Boolean));
+      const zijEverOut=new Set((g.wisselingen||[]).flatMap(w=>[w.zijUit,w.zijUit2]).filter(Boolean));
+      const allWij=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverOut.has(id))];
+      const allZij=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverOut.has(id))];
       [...allWij,...allZij].forEach(pid=>{
         if(!pStats[pid]) pStats[pid]={games:0,wins:0,losses:0,totalScore:0,nat:0,verz:0,pit:0,totalRoem:0};
         const isWij=allWij.includes(pid);
