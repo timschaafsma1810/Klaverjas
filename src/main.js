@@ -1212,12 +1212,26 @@ function openTafelModal(){
     const both=hasWijBench&&hasZijBench;
     function teamCard(team,label,hasBT,startIds,benchIds,defUit){
       if(!hasBT) return '';
+      const canDouble=startIds.length>=2&&benchIds.length>=2;
+      // Standaard tweede wissel: de andere speler dan defUit, de andere bankspeler dan benchIds[0]
+      const defUit2=startIds.find(id=>id!==defUit)??startIds[1];
       const togHtml=both?`
         <label style="display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none" onclick="toggleWisselCard('${team}')">
           <span style="font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--gold)">TEAM ${label.toUpperCase()} WISSELT</span>
           <span id="toggle-${team}-wissel" style="width:32px;height:18px;border-radius:9px;background:var(--gold);color:var(--green);display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;transition:all .2s">✓</span>
           <input type="checkbox" id="cb-${team}-wisselt" checked style="display:none">
         </label>`:`<div style="font-size:12px;font-weight:700;letter-spacing:.6px;color:var(--gold);margin-bottom:8px">TEAM ${label.toUpperCase()} WISSELT</div>`;
+      const doubleRow=canDouble?`
+        <div id="fields-${team}-wissel2" style="display:none;margin-top:10px;padding-top:10px;border-top:1px solid rgba(201,168,76,.15)">
+          <label style="font-size:12px;color:rgba(245,240,232,.6);margin-top:4px">Wie gaat er ook uit?</label>
+          <select id="wissel-${team}-uit2">${opts(startIds,defUit2)}</select>
+          <label style="font-size:12px;color:rgba(245,240,232,.6);margin-top:8px">Wie komt er ook in?</label>
+          <select id="wissel-${team}-in2">${benchIds.map(id=>`<option value="${id}"${id===benchIds[1]?' selected':''}>${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
+        </div>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:10px;cursor:pointer;user-select:none">
+          <input type="checkbox" id="cb-${team}-dubbel" onchange="toggleDubbelWissel('${team}')" style="width:16px;height:16px;accent-color:var(--gold)">
+          <span style="font-size:12px;color:rgba(245,240,232,.7)">Wissel beiden</span>
+        </label>`:'';
       return `<div id="card-${team}-wissel" style="border:1px solid rgba(201,168,76,.4);border-radius:12px;padding:12px 14px;margin-bottom:10px;background:rgba(201,168,76,.06)">
         ${togHtml}
         <div id="fields-${team}-wissel" style="display:block;margin-top:${both?'10px':'0'}">
@@ -1225,6 +1239,7 @@ function openTafelModal(){
           <select id="wissel-${team}-uit">${opts(startIds,defUit)}</select>
           <label style="font-size:12px;color:rgba(245,240,232,.6);margin-top:8px">Wie komt erin?</label>
           <select id="wissel-${team}-in">${benchIds.map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('')}</select>
+          ${doubleRow}
         </div>
       </div>`;
     }
@@ -1255,6 +1270,29 @@ function openWisselModal(){
 }
 
 
+function toggleDubbelWissel(team){
+  const cb=document.getElementById('cb-'+team+'-dubbel');
+  const fields=document.getElementById('fields-'+team+'-wissel2');
+  if(fields) fields.style.display=(cb&&cb.checked)?'block':'none';
+}
+
+// Helper: wissel één speler voor één team (muteert g.wij/g.wijBench etc.)
+function _doOneWissel(g,team,uitId,inId,wisseling,suffix=''){
+  const arr=team==='wij'?g.wij:g.zij;
+  const bench=team==='wij'?(g.wijBench||(g.wijBench=[])):(g.zijBench||(g.zijBench=[]));
+  const uitIdx=arr.indexOf(uitId);
+  const inBenchIdx=bench.indexOf(inId);
+  if(uitIdx>=0&&inBenchIdx>=0){
+    arr[uitIdx]=inId;
+    bench[inBenchIdx]=uitId;
+    const seatIdx=g.seatOrder.indexOf(uitId);
+    if(seatIdx>=0) g.seatOrder[seatIdx]=inId;
+    if(g.starter===uitId) g.starter=inId;
+    if(suffix===''){wisseling[team+'Uit']=uitId;wisseling[team+'In']=inId;}
+    else{wisseling[team+'Uit2']=uitId;wisseling[team+'In2']=inId;}
+  }
+}
+
 function confirmWissel(){
   const g=current;if(!g) return;
   if(!g.wisselingen) g.wisselingen=[];
@@ -1269,16 +1307,13 @@ function confirmWissel(){
   const wijUitEl=document.getElementById('wissel-wij-uit');
   const wijInEl=document.getElementById('wissel-wij-in');
   if(wijWisselt&&wijUitEl&&wijInEl){
-    const uitId=+wijUitEl.value,inId=+wijInEl.value;
-    const uitIdx=g.wij.indexOf(uitId);
-    const inBenchIdx=(g.wijBench||[]).indexOf(inId);
-    if(uitIdx>=0&&inBenchIdx>=0){
-      g.wij[uitIdx]=inId;
-      g.wijBench[inBenchIdx]=uitId;
-      const seatIdx=g.seatOrder.indexOf(uitId);
-      if(seatIdx>=0) g.seatOrder[seatIdx]=inId;
-      if(g.starter===uitId) g.starter=inId;
-      wisseling.wijUit=uitId;wisseling.wijIn=inId;
+    _doOneWissel(g,'wij',+wijUitEl.value,+wijInEl.value,wisseling,'');
+    // Dubbele wissel wij?
+    const cbDubbel=document.getElementById('cb-wij-dubbel');
+    if(cbDubbel?.checked){
+      const uit2El=document.getElementById('wissel-wij-uit2');
+      const in2El=document.getElementById('wissel-wij-in2');
+      if(uit2El&&in2El) _doOneWissel(g,'wij',+uit2El.value,+in2El.value,wisseling,'2');
     }
   }
   const cbZij=document.getElementById('cb-zij-wisselt');
@@ -1286,16 +1321,13 @@ function confirmWissel(){
   const zijUitEl=document.getElementById('wissel-zij-uit');
   const zijInEl=document.getElementById('wissel-zij-in');
   if(zijWisselt&&zijUitEl&&zijInEl){
-    const uitId=+zijUitEl.value,inId=+zijInEl.value;
-    const uitIdx=g.zij.indexOf(uitId);
-    const inBenchIdx=(g.zijBench||[]).indexOf(inId);
-    if(uitIdx>=0&&inBenchIdx>=0){
-      g.zij[uitIdx]=inId;
-      g.zijBench[inBenchIdx]=uitId;
-      const seatIdx=g.seatOrder.indexOf(uitId);
-      if(seatIdx>=0) g.seatOrder[seatIdx]=inId;
-      if(g.starter===uitId) g.starter=inId;
-      wisseling.zijUit=uitId;wisseling.zijIn=inId;
+    _doOneWissel(g,'zij',+zijUitEl.value,+zijInEl.value,wisseling,'');
+    // Dubbele wissel zij?
+    const cbDubbel=document.getElementById('cb-zij-dubbel');
+    if(cbDubbel?.checked){
+      const uit2El=document.getElementById('wissel-zij-uit2');
+      const in2El=document.getElementById('wissel-zij-in2');
+      if(uit2El&&in2El) _doOneWissel(g,'zij',+uit2El.value,+in2El.value,wisseling,'2');
     }
   }
   g.wisselingen.push(wisseling);
@@ -1658,10 +1690,14 @@ function getRoundAward(g,ronde){
   let z=parseInt(ronde.z)||0;
   const special=((ronde.special||'') || getAutoNatSpecial(g,ronde)).toUpperCase();
   if(special.includes('NAT WIJ')||special.includes('VERZ WIJ')){
-    return {w:0,z:162+rw+rz,roemWij:0,roemZij:rw+rz};
+    // natBonus (100) telt mee in totaalscore maar NIET als roem
+    // Legacy (geen natBonus): de 100 zat vroeger in rz, dan bonus=0 en rz bevat al de 100
+    const bonus=ronde.natBonus||0;
+    return {w:0,z:162+bonus+rw+rz,roemWij:0,roemZij:rw+rz};
   }
   if(special.includes('NAT ZIJ')||special.includes('VERZ ZIJ')){
-    return {w:162+rw+rz,z:0,roemWij:rw+rz,roemZij:0};
+    const bonus=ronde.natBonus||0;
+    return {w:162+bonus+rw+rz,z:0,roemWij:rw+rz,roemZij:0};
   }
   if(special.includes('PIT WIJ')){
     return {w:w+rw+rz,z:0,roemWij:rw+rz,roemZij:0};
@@ -1714,10 +1750,10 @@ function applySpecial(type,team){
   if(_modalJustClosed||_blockSubmit) return;
   const other=team==='wij'?'zij':'wij';
   if(type==='nat'){
-    // Som beide teams' roem + 100 basis, geef alles aan de winnaar
+    // Som beide teams' roem (de 100 nat-straf is geen roem, maar extra punten)
     const roemW=parseInt(document.getElementById('input-roem-wij').value)||0;
     const roemZ=parseInt(document.getElementById('input-roem-zij').value)||0;
-    const totalRoem=roemW+roemZ+100;
+    const totalRoem=roemW+roemZ; // geen +100 in roem — natBonus apart bijhouden
     document.getElementById('input-wij').value='';
     document.getElementById('input-zij').value='';
     document.getElementById('input-'+team).value=0;
@@ -1727,6 +1763,7 @@ function applySpecial(type,team){
     document.getElementById('input-wij').dataset.special='NAT '+(team==='wij'?'WIJ':'ZIJ');
     document.getElementById('input-wij').dataset.specialTime=Date.now();
     document.getElementById('input-wij').dataset.natTeam=team;
+    document.getElementById('input-wij').dataset.natBonus='100';
     // FX direct afspelen (geen setTimeout = beter voor iOS geluid)
     showNatFX();
     showToast('💧 NAT '+(team==='wij'?'Wij':'Zij')+' — 0 punten');
@@ -1777,7 +1814,7 @@ function selectVerzPlayer(playerId){
   // Som beide teams' roem + 100 basis, geef alles aan de winnaar
   const prevRoemW=parseInt(document.getElementById('input-roem-wij').value)||0;
   const prevRoemZ=parseInt(document.getElementById('input-roem-zij').value)||0;
-  const totalRoem=prevRoemW+prevRoemZ+100;
+  const totalRoem=prevRoemW+prevRoemZ; // geen +100 in roem — natBonus apart bijhouden
   ['input-wij','input-zij','input-roem-wij','input-roem-zij'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('input-'+team).value=0;
   document.getElementById('input-'+other).value=162;
@@ -1785,6 +1822,7 @@ function selectVerzPlayer(playerId){
   const inputWij=document.getElementById('input-wij');
   inputWij.dataset.special='VERZ '+(team==='wij'?'WIJ':'ZIJ');
   inputWij.dataset.specialTime=Date.now();
+  inputWij.dataset.natBonus='100';
   showVerzFX();
   showToast('🔵 VERZ '+(team==='wij'?'Wij':'Zij')+' — '+getPlayer(playerId)?.name+' verzaakte');
   setTimeout(()=>submitRound(),350);
@@ -1820,8 +1858,10 @@ function submitRound(){
   const inputWijEl=document.getElementById('input-wij');
   const specialAge=Date.now()-parseInt(inputWijEl.dataset.specialTime||'0');
   const special=specialAge<5000?(inputWijEl.dataset.special||''):'';
-  delete document.getElementById('input-wij').dataset.special;
-  delete document.getElementById('input-wij').dataset.natTeam;
+  const natBonus=specialAge<5000?parseInt(inputWijEl.dataset.natBonus||'0')||0:0;
+  delete inputWijEl.dataset.special;
+  delete inputWijEl.dataset.natTeam;
+  delete inputWijEl.dataset.natBonus;
 
   const spelId=document.getElementById('sel-speler').value||null;
   if(!spelId) return showToast('Selecteer eerst wie speelt',true);
@@ -1839,7 +1879,7 @@ function submitRound(){
   const uitId=getUitbeurt(g.rounds.length);
   const verzPlayerId=special.includes('VERZ')&&_pendingVerzPlayerId?_pendingVerzPlayerId:null;
   _pendingVerzPlayerId=null;
-  const rondeData={w:fw,z:fz,rw,rz,special:'',spelId,spelWij,spelZij,uitId,verzPlayerId};
+  const rondeData={w:fw,z:fz,rw,rz,special:'',spelId,spelWij,spelZij,uitId,verzPlayerId,...(natBonus?{natBonus}:{})};
   rondeData.special=special||getAutoNatSpecial(g,rondeData);
   const autoNat=rondeData.special.includes('(auto)')?rondeData.special:'';
   if(autoNat) showNatFX();
@@ -3483,10 +3523,12 @@ function _applyConvexData(data){
   const rawPlayers = data.kj_players ?? [];
   const photoUrls = data.kj_photo_urls ?? {}; // storageId → CDN-URL (opgelost in getData)
   players = rawPlayers.map(p=>{
-    // Prioriteit: Convex File Storage URL > localStorage (oud/fallback) > geen foto
+    // Prioriteit: Convex File Storage URL > localStorage > oud Convex-veld (pre-optimalisatie)
     const cloudUrl = p.photoId ? photoUrls[p.photoId] : null;
     const localUrl = localStorage.getItem('kj_photo_'+p.id);
-    const photo = cloudUrl || localUrl || null;
+    const photo = cloudUrl || localUrl || p.photo || null;
+    // Migreer naar localStorage zodat foto beschikbaar blijft zonder Convex-veld
+    if(photo && !localUrl){try{localStorage.setItem('kj_photo_'+p.id, photo);}catch{}}
     return photo ? {...p, photo} : p;
   });
   // Nieuw formaat: kj_games_active + kj_games_history; legacy fallback: kj_games
@@ -3589,11 +3631,17 @@ function getTournamentStandings(t){
   const tourGames=games.filter(g=>t.gameIds.includes(String(g.id)));
   const stats={};
   tourGames.forEach(g=>{
-    [[...g.wij],[...g.zij]].forEach((team,ti)=>{
+    // Inclusief bankspelers die daadwerkelijk zijn ingewisseld (zelfde logica als recalcPlayerStats)
+    const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
+    const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+    const allWijIds=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
+    const allZijIds=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
+    [allWijIds,allZijIds].forEach((team,ti)=>{
       const isWij=ti===0;
-      const myScore=isWij?g.finalWij:g.finalZij;
-      const won=isWij?(g.finalWij>g.finalZij):(g.finalZij>g.finalWij);
-      const draw=g.finalWij===g.finalZij;
+      const myScore=isWij?(g.finalWij??g.scoreWij??0):(g.finalZij??g.scoreZij??0);
+      const oppScore=isWij?(g.finalZij??g.scoreZij??0):(g.finalWij??g.scoreWij??0);
+      const won=myScore>oppScore;
+      const draw=myScore===oppScore;
       team.forEach(pid=>{
         if(!stats[pid]) stats[pid]={games:0,wins:0,losses:0,draws:0,points:0};
         stats[pid].games++;stats[pid].points+=myScore;
@@ -3643,15 +3691,21 @@ function renderToernooi(){
   }).join(''):`<div class="empty"><div class="empty-icon">🏆</div><div class="empty-text">Nog geen eerdere toernooien</div></div>`;
 }
 
-function openTournamentDetail(id){
+function renderTournamentDetailTab(id,tab){
   const t=tournaments.find(x=>String(x.id)===String(id));if(!t) return;
-  const standings=getTournamentStandings(t);
-  const bomen=games.filter(g=>t.gameIds.includes(String(g.id))).length;
+  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id)));
+  const bomen=tourGames.length;
   const d=new Date(t.date).toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  document.getElementById('modal-toernooi-detail-content').innerHTML=`
-    <div class="modal-title">${t.name} <span class="modal-close" onclick="closeModal('modal-toernooi-detail')">✕</span></div>
-    <div style="font-size:12px;color:rgba(245,240,232,.4);margin-bottom:16px">${d} · ${bomen} bomen gespeeld</div>
-    ${standings.length?standings.map((s,i)=>`
+
+  const tabs=[{k:'standen',l:'🏆 Standen'},{k:'stats',l:'📊 Statistieken'},{k:'bomen',l:'🌳 Bomen'}];
+  const tabBar=`<div style="display:flex;gap:6px;margin-bottom:16px;overflow-x:auto">
+    ${tabs.map(tb=>`<div class="filter-chip ${tab===tb.k?'active':''}" onclick="renderTournamentDetailTab('${id}','${tb.k}')" style="white-space:nowrap">${tb.l}</div>`).join('')}
+  </div>`;
+
+  let content='';
+  if(tab==='standen'){
+    const standings=getTournamentStandings(t);
+    content=standings.length?standings.map((s,i)=>`
       <div style="display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid rgba(201,168,76,.1)">
         <div style="font-size:20px;font-weight:700;color:var(--gold);width:28px">${i+1}</div>
         <div style="flex:1">
@@ -3660,10 +3714,107 @@ function openTournamentDetail(id){
         </div>
         <div style="font-size:22px">${i===0?'🥇':i===1?'🥈':i===2?'🥉':''}</div>
       </div>
-    `).join(''):`<div style="color:rgba(245,240,232,.4);padding:12px 0">Geen data beschikbaar</div>`}
+    `).join(''):`<div style="color:rgba(245,240,232,.4);padding:12px 0">Geen data beschikbaar</div>`;
+  } else if(tab==='stats'){
+    // Per-speler stats binnen dit toernooi
+    const pStats={};
+    tourGames.forEach(g=>{
+      const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
+      const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+      const allWij=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
+      const allZij=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
+      [...allWij,...allZij].forEach(pid=>{
+        if(!pStats[pid]) pStats[pid]={games:0,wins:0,losses:0,totalScore:0,nat:0,verz:0,pit:0,rounds:0,totalRoem:0};
+        const isWij=allWij.includes(pid);
+        const myScore=isWij?(g.finalWij??g.scoreWij??0):(g.finalZij??g.scoreZij??0);
+        const oppScore=isWij?(g.finalZij??g.scoreZij??0):(g.finalWij??g.scoreWij??0);
+        pStats[pid].games++;
+        pStats[pid].totalScore+=myScore;
+        if(myScore>oppScore) pStats[pid].wins++;
+        else if(myScore<oppScore) pStats[pid].losses++;
+        if(g.completed){
+          pStats[pid].rounds+=g.rounds.length;
+          g.rounds.forEach(r=>{
+            const sp=(r.special||'').toUpperCase();
+            if(isWij){if(sp.includes('NAT WIJ'))pStats[pid].nat++;if(sp.includes('VERZ WIJ'))pStats[pid].verz++;if(sp.includes('PIT WIJ'))pStats[pid].pit++;}
+            else{if(sp.includes('NAT ZIJ'))pStats[pid].nat++;if(sp.includes('VERZ ZIJ'))pStats[pid].verz++;if(sp.includes('PIT ZIJ'))pStats[pid].pit++;}
+            const award=getRoundAward(g,r);
+            pStats[pid].totalRoem+=isWij?award.roemWij:award.roemZij;
+          });
+        }
+      });
+    });
+    const sorted=Object.entries(pStats)
+      .map(([id,s])=>({p:getPlayer(+id),...s}))
+      .filter(x=>x.p)
+      .sort((a,b)=>b.wins-a.wins||b.totalScore-a.totalScore);
+    if(!sorted.length){content=`<div style="color:rgba(245,240,232,.4);padding:12px 0">Geen data beschikbaar</div>`;}
+    else{
+      content=`<div style="margin-bottom:8px">
+        ${sorted.map((s,i)=>{
+          const wr=s.games?Math.round(s.wins/s.games*100):0;
+          const avgPts=s.games?Math.round(s.totalScore/s.games):0;
+          const medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+          return `<div style="padding:10px 0;border-bottom:1px solid rgba(201,168,76,.1)">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px">
+              <div style="font-size:18px;font-weight:700;color:var(--gold);width:24px">${i+1}</div>
+              <div style="font-size:14px;font-weight:600">${s.p.name}</div>
+              <div style="font-size:16px">${medal}</div>
+              <div style="margin-left:auto;font-size:13px;font-weight:700;color:var(--gold)">${wr}% W</div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;padding-left:32px">
+              <span style="font-size:11px;color:rgba(245,240,232,.5)">⚔️ ${s.wins}W / ${s.losses}V</span>
+              <span style="font-size:11px;color:rgba(245,240,232,.5)">📊 gem. ${avgPts} ptn</span>
+              ${s.nat?`<span style="font-size:11px;color:#e74c3c">💧 ${s.nat}× nat</span>`:''}
+              ${s.verz?`<span style="font-size:11px;color:#3498db">🔵 ${s.verz}× verz</span>`:''}
+              ${s.pit?`<span style="font-size:11px;color:var(--gold)">💥 ${s.pit}× pit</span>`:''}
+              ${s.totalRoem?`<span style="font-size:11px;color:rgba(245,240,232,.5)">✨ ${s.totalRoem} roem</span>`:''}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="margin-top:10px;padding:10px;background:rgba(201,168,76,.06);border-radius:8px;border:1px solid rgba(201,168,76,.2)">
+        <div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:8px;letter-spacing:1px">TOERNOOI TOTALEN</div>
+        <div style="display:flex;flex-wrap:wrap;gap:12px">
+          ${(()=>{let nat=0,verz=0,pit=0;tourGames.forEach(g=>g.rounds.forEach(r=>{if(r.special){if(r.special.toUpperCase().includes('NAT'))nat++;if(r.special.toUpperCase().includes('VERZ'))verz++;if(r.special.toUpperCase().includes('PIT'))pit++;}}));return `<span style="font-size:12px;color:rgba(245,240,232,.6)">💧 ${nat} nat</span><span style="font-size:12px;color:rgba(245,240,232,.6)">🔵 ${verz} verz</span><span style="font-size:12px;color:rgba(245,240,232,.6)">💥 ${pit} pit</span>`;})()}
+          <span style="font-size:12px;color:rgba(245,240,232,.6)">🌳 ${bomen} bomen</span>
+        </div>
+      </div>`;
+    }
+  } else if(tab==='bomen'){
+    const sorted=[...tourGames].sort((a,b)=>new Date(b.date)-new Date(a.date));
+    content=sorted.length?sorted.map(g=>{
+      const wn=[...g.wij,...(g.wijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
+      const zn=[...g.zij,...(g.zijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
+      const fw=g.finalWij??g.scoreWij??0;const fz=g.finalZij??g.scoreZij??0;
+      const won=fw>fz;
+      const dd=new Date(g.date).toLocaleDateString('nl-NL',{day:'numeric',month:'short'});
+      return `<div style="padding:10px 0;border-bottom:1px solid rgba(201,168,76,.1)">
+        <div style="font-size:11px;color:rgba(245,240,232,.4);margin-bottom:2px">${dd} · ${g.rounds.length} blaadjes${g.completed?' 🌳':''}</div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="flex:1;font-size:13px">${wn}</div>
+          <div style="font-size:16px;font-weight:800;color:${won?'var(--gold)':'rgba(245,240,232,.6)'}">${fw}</div>
+          <div style="font-size:11px;color:rgba(245,240,232,.4)">–</div>
+          <div style="font-size:16px;font-weight:800;color:${!won&&fw!==fz?'var(--gold)':'rgba(245,240,232,.6)'}">${fz}</div>
+          <div style="flex:1;font-size:13px;text-align:right">${zn}</div>
+        </div>
+      </div>`;
+    }).join(''):`<div style="color:rgba(245,240,232,.4);padding:12px 0">Geen bomen beschikbaar</div>`;
+  }
+
+  document.getElementById('modal-toernooi-detail-content').innerHTML=`
+    <div class="modal-title">${t.name} <span class="modal-close" onclick="closeModal('modal-toernooi-detail')">✕</span></div>
+    <div style="font-size:12px;color:rgba(245,240,232,.4);margin-bottom:12px">${d} · ${bomen} bomen gespeeld</div>
+    ${tabBar}
+    ${content}
     <div style="height:14px"></div>
-    <button class="btn btn-red" onclick="deleteTournament('${t.id}')">Toernooi verwijderen</button>
+    <button class="btn btn-red" onclick="deleteTournament('${id}')">Toernooi verwijderen</button>
   `;
+}
+
+function openTournamentDetail(id){
+  const t=tournaments.find(x=>String(x.id)===String(id));if(!t) return;
+  renderTournamentDetailTab(id,'standen');
   openModal('modal-toernooi-detail');
 }
 
@@ -3762,6 +3913,7 @@ Object.assign(window,{
   showAchievementTip,
   openPlayerDuos,
   toggleWisselCard,
+  toggleDubbelWissel,
   openTafelModal,
   openWisselModal,
   confirmWissel,
@@ -3780,6 +3932,7 @@ Object.assign(window,{
   endTournament,
   renderToernooi,
   openTournamentDetail,
+  renderTournamentDetailTab,
   deleteTournament,
   toggleSound,
 });
