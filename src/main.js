@@ -3372,14 +3372,13 @@ function renderRecordsStats(){
 
   const byVerspeeld=[...active].filter(p=>verspeeld[p.id]>0).sort((a,b)=>(verspeeld[b.id]||0)-(verspeeld[a.id]||0));
 
-  // Langste en snelste boom (alleen voltooide spellen met start- en eindtijd)
-  const timedGames=games.filter(g=>!g.active&&!g.deletedAt&&g.completed&&g.rounds.length>=16&&g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<6*3600000);
+  // Langste boom: ook onvolledige bomen tellen mee (eerder gestopt kan toch lang duren)
+  const timedGamesLong=games.filter(g=>!g.active&&!g.deletedAt&&g.rounds.length>0&&g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<6*3600000);
+  // Kortste boom: alleen volledig gespeelde bomen (anders wint altijd een 1-blaadje boom)
+  const timedGamesShort=games.filter(g=>!g.active&&!g.deletedAt&&g.completed&&g.rounds.length>=16&&g.date&&g.endDate&&(new Date(g.endDate)-new Date(g.date))<6*3600000);
   let longestGame=null,shortestGame=null;
-  timedGames.forEach(g=>{
-    const dur=new Date(g.endDate)-new Date(g.date);
-    if(!longestGame||dur>longestGame.dur) longestGame={g,dur};
-    if(!shortestGame||dur<shortestGame.dur) shortestGame={g,dur};
-  });
+  timedGamesLong.forEach(g=>{const dur=new Date(g.endDate)-new Date(g.date);if(!longestGame||dur>longestGame.dur) longestGame={g,dur};});
+  timedGamesShort.forEach(g=>{const dur=new Date(g.endDate)-new Date(g.date);if(!shortestGame||dur<shortestGame.dur) shortestGame={g,dur};});
 
   // Team hoogste score (als team gescoord, niet per speler)
   let teamHighScore={players:[],score:0};
