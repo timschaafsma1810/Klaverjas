@@ -818,7 +818,7 @@ function openProfile(id){
   const since=new Date(p.created).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
   const kaapCount=p.roundsKaap||0;
   const spelPct=p.rounds>0?Math.round(p.roundsPlayed/p.rounds*100):0;
-  const pg=games.filter(g=>!g.deletedAt&&[...g.wij,...(g.wijBench||[]),...g.zij,...(g.zijBench||[])].includes(p.id)).sort((a,b)=>new Date(a.endDate||a.date)-new Date(b.endDate||b.date)).slice(-5).reverse();
+  const pg=games.filter(g=>!g.deletedAt&&[...g.wij,...(g.wijBench||[]),...g.zij,...(g.zijBench||[])].includes(p.id)).sort((a,b)=>new Date(a.date)-new Date(b.date)).slice(-5).reverse();
   const avImg=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p.name[0].toUpperCase()}`;
   const form=getPlayerForm(p.id);
   const formHTML=form.last5.length?`
@@ -1756,7 +1756,7 @@ function recalcGameTotals(g){
 
 function openLatestFinishedGameForEdit(){
   if(!games.length) return showToast('Nog geen opgeslagen boom gevonden',true);
-  const latest=[...games].sort((a,b)=>new Date(b.endDate||b.date)-new Date(a.endDate||a.date))[0];
+  const latest=[...games].sort((a,b)=>new Date(b.date)-new Date(a.date))[0];
   if(!latest) return showToast('Nog geen opgeslagen boom gevonden',true);
   editGameFromHistory(latest.id);
 }
@@ -2268,7 +2268,7 @@ function renderHistory(){
   const el=document.getElementById('history-list');
   if(!games.length){el.innerHTML=`<div class="empty"><div class="empty-icon">📋</div><div class="empty-text">Nog geen spellen</div><div class="empty-sub">Start je eerste boom!</div></div>`;return}
   const trashedCount=games.filter(g=>g.deletedAt).length;
-  el.innerHTML=[...games].filter(g=>!g.deletedAt).sort((a,b)=>new Date(b.endDate||b.date)-new Date(a.endDate||a.date)).map(g=>{
+  el.innerHTML=[...games].filter(g=>!g.deletedAt).sort((a,b)=>new Date(b.date)-new Date(a.date)).map(g=>{
     const wn=[...g.wij,...(g.wijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
     const zn=[...g.zij,...(g.zijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
     const d=new Date(g.date).toLocaleDateString('nl-NL',{weekday:'short',day:'numeric',month:'short',year:'numeric'});
@@ -3556,7 +3556,7 @@ function renderHome(){
   }
   // Recente afgeronde spellen
   const el=document.getElementById('recent-games-list');
-  const recent=[...games].filter(g=>!g.active&&!g.deletedAt).sort((a,b)=>new Date(a.endDate||a.date)-new Date(b.endDate||b.date)).reverse().slice(0,5);
+  const recent=[...games].filter(g=>!g.active&&!g.deletedAt).sort((a,b)=>new Date(a.date)-new Date(b.date)).reverse().slice(0,5);
   if(!recent.length){el.innerHTML=`<div class="empty"><div class="empty-icon">🃏</div><div class="empty-text">Nog geen spellen gespeeld</div><div class="empty-sub">Druk op "Nieuw spel starten" om te beginnen</div></div>`;return}
   el.innerHTML=recent.map(g=>{
     const wn=getGameTeamNames(g,'wij');
@@ -3808,7 +3808,7 @@ function _buildTournamentTabContent(t, tab){
     </div>`:''}`;
   }
   if(tab==='bomen'){
-    const sorted=[...tourGames].sort((a,b)=>new Date(b.endDate||b.date)-new Date(a.endDate||a.date));
+    const sorted=[...tourGames].sort((a,b)=>new Date(b.date)-new Date(a.date));
     if(!sorted.length) return `<div style="color:rgba(245,240,232,.4);font-size:13px;padding:10px 0">Nog geen bomen gespeeld in dit toernooi</div>`;
     return sorted.map(g=>{
       const wn=[...g.wij,...(g.wijBench||[])].map(id=>getPlayer(id)?.name||'?').join(' & ');
