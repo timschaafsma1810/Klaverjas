@@ -785,7 +785,7 @@ function openProfile(id){
   const since=new Date(p.created).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
   const kaapCount=p.roundsKaap||0;
   const spelPct=p.rounds>0?Math.round(p.roundsPlayed/p.rounds*100):0;
-  const pg=games.filter(g=>!g.deletedAt&&[...g.wij,...(g.wijBench||[]),...g.zij,...(g.zijBench||[])].includes(p.id)).slice(-5).reverse();
+  const pg=games.filter(g=>!g.deletedAt&&[...g.wij,...(g.wijBench||[]),...g.zij,...(g.zijBench||[])].includes(p.id)).sort((a,b)=>new Date(a.endDate||a.date)-new Date(b.endDate||b.date)).slice(-5).reverse();
   const avImg=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p.name[0].toUpperCase()}`;
   const form=getPlayerForm(p.id);
   const formHTML=form.last5.length?`
@@ -1581,7 +1581,11 @@ function renderGame(){
   const allOpts=getSeatOrder(g).map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('');
   const spelSelect=document.getElementById('sel-speler');
   spelSelect.innerHTML=`<option value="">— Kies wie speelt —</option>`+allOpts;
-  spelSelect.value=String(uitId||'');
+  // Herstel handmatig gekozen speler (bijv. na schermvergrendeling), anders uitbeurt
+  const savedSpeler=g._selectedSpelerId&&getSeatOrder(g).includes(+g._selectedSpelerId)?String(g._selectedSpelerId):String(uitId||'');
+  spelSelect.value=savedSpeler;
+  // Bijhouden als gebruiker handmatig kiest
+  spelSelect.onchange=function(){if(current) current._selectedSpelerId=this.value?+this.value:null;};
 
   // Wissel bar altijd tonen
   const wisselBar=document.getElementById('wissel-bar');
@@ -1690,14 +1694,10 @@ function getRoundAward(g,ronde){
   let z=parseInt(ronde.z)||0;
   const special=((ronde.special||'') || getAutoNatSpecial(g,ronde)).toUpperCase();
   if(special.includes('NAT WIJ')||special.includes('VERZ WIJ')){
-    // natBonus (100) telt mee in totaalscore maar NIET als roem
-    // Legacy (geen natBonus): de 100 zat vroeger in rz, dan bonus=0 en rz bevat al de 100
-    const bonus=ronde.natBonus||0;
-    return {w:0,z:162+bonus+rw+rz,roemWij:0,roemZij:rw+rz};
+    return {w:0,z:162+rw+rz,roemWij:0,roemZij:rw+rz};
   }
   if(special.includes('NAT ZIJ')||special.includes('VERZ ZIJ')){
-    const bonus=ronde.natBonus||0;
-    return {w:162+bonus+rw+rz,z:0,roemWij:rw+rz,roemZij:0};
+    return {w:162+rw+rz,z:0,roemWij:rw+rz,roemZij:0};
   }
   if(special.includes('PIT WIJ')){
     return {w:w+rw+rz,z:0,roemWij:rw+rz,roemZij:0};
@@ -1750,10 +1750,10 @@ function applySpecial(type,team){
   if(_modalJustClosed||_blockSubmit) return;
   const other=team==='wij'?'zij':'wij';
   if(type==='nat'){
-    // Som beide teams' roem (de 100 nat-straf is geen roem, maar extra punten)
+    // Tegenstander krijgt 162 kaartpunten + alleen de al ingevulde roem; geen +100 bonus
     const roemW=parseInt(document.getElementById('input-roem-wij').value)||0;
     const roemZ=parseInt(document.getElementById('input-roem-zij').value)||0;
-    const totalRoem=roemW+roemZ; // geen +100 in roem — natBonus apart bijhouden
+    const totalRoem=roemW+roemZ;
     document.getElementById('input-wij').value='';
     document.getElementById('input-zij').value='';
     document.getElementById('input-'+team).value=0;
@@ -1763,7 +1763,6 @@ function applySpecial(type,team){
     document.getElementById('input-wij').dataset.special='NAT '+(team==='wij'?'WIJ':'ZIJ');
     document.getElementById('input-wij').dataset.specialTime=Date.now();
     document.getElementById('input-wij').dataset.natTeam=team;
-    document.getElementById('input-wij').dataset.natBonus='100';
     // FX direct afspelen (geen setTimeout = beter voor iOS geluid)
     showNatFX();
     showToast('💧 NAT '+(team==='wij'?'Wij':'Zij')+' — 0 punten');
@@ -1814,7 +1813,7 @@ function selectVerzPlayer(playerId){
   // Som beide teams' roem + 100 basis, geef alles aan de winnaar
   const prevRoemW=parseInt(document.getElementById('input-roem-wij').value)||0;
   const prevRoemZ=parseInt(document.getElementById('input-roem-zij').value)||0;
-  const totalRoem=prevRoemW+prevRoemZ; // geen +100 in roem — natBonus apart bijhouden
+  const totalRoem=prevRoemW+prevRoemZ; // geen +100 bonus
   ['input-wij','input-zij','input-roem-wij','input-roem-zij'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('input-'+team).value=0;
   document.getElementById('input-'+other).value=162;
@@ -1822,7 +1821,6 @@ function selectVerzPlayer(playerId){
   const inputWij=document.getElementById('input-wij');
   inputWij.dataset.special='VERZ '+(team==='wij'?'WIJ':'ZIJ');
   inputWij.dataset.specialTime=Date.now();
-  inputWij.dataset.natBonus='100';
   showVerzFX();
   showToast('🔵 VERZ '+(team==='wij'?'Wij':'Zij')+' — '+getPlayer(playerId)?.name+' verzaakte');
   setTimeout(()=>submitRound(),350);
@@ -1858,10 +1856,8 @@ function submitRound(){
   const inputWijEl=document.getElementById('input-wij');
   const specialAge=Date.now()-parseInt(inputWijEl.dataset.specialTime||'0');
   const special=specialAge<5000?(inputWijEl.dataset.special||''):'';
-  const natBonus=specialAge<5000?parseInt(inputWijEl.dataset.natBonus||'0')||0:0;
   delete inputWijEl.dataset.special;
   delete inputWijEl.dataset.natTeam;
-  delete inputWijEl.dataset.natBonus;
 
   const spelId=document.getElementById('sel-speler').value||null;
   if(!spelId) return showToast('Selecteer eerst wie speelt',true);
@@ -1879,7 +1875,7 @@ function submitRound(){
   const uitId=getUitbeurt(g.rounds.length);
   const verzPlayerId=special.includes('VERZ')&&_pendingVerzPlayerId?_pendingVerzPlayerId:null;
   _pendingVerzPlayerId=null;
-  const rondeData={w:fw,z:fz,rw,rz,special:'',spelId,spelWij,spelZij,uitId,verzPlayerId,...(natBonus?{natBonus}:{})};
+  const rondeData={w:fw,z:fz,rw,rz,special:'',spelId,spelWij,spelZij,uitId,verzPlayerId};
   rondeData.special=special||getAutoNatSpecial(g,rondeData);
   const autoNat=rondeData.special.includes('(auto)')?rondeData.special:'';
   if(autoNat) showNatFX();
@@ -1897,6 +1893,7 @@ function submitRound(){
 
   ['input-wij','input-zij','input-roem-wij','input-roem-zij'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('sel-speler').value='';
+  if(g) g._selectedSpelerId=null; // handmatige keuze wissen na submitRound
 
   if(g.rounds.length>=16){
     showToast('🌳 Boom vol! 16 blaadjes gespeeld');
@@ -3484,7 +3481,7 @@ function renderHome(){
   }
   // Recente afgeronde spellen
   const el=document.getElementById('recent-games-list');
-  const recent=[...games].filter(g=>!g.active&&!g.deletedAt).reverse().slice(0,5);
+  const recent=[...games].filter(g=>!g.active&&!g.deletedAt).sort((a,b)=>new Date(a.endDate||a.date)-new Date(b.endDate||b.date)).reverse().slice(0,5);
   if(!recent.length){el.innerHTML=`<div class="empty"><div class="empty-icon">🃏</div><div class="empty-text">Nog geen spellen gespeeld</div><div class="empty-sub">Druk op "Nieuw spel starten" om te beginnen</div></div>`;return}
   el.innerHTML=recent.map(g=>{
     const wn=getGameTeamNames(g,'wij');
@@ -3558,6 +3555,7 @@ function _applyConvexData(data){
   }
   if(_localGamePending && !current) _localGamePending = null;
   _convexReady = true;
+  recalcPlayerStats(); // altijd stats bijwerken na Convex-update
   _refreshActiveView();
   // Verberg laadscherm zodra data binnenkomt
   const loader=document.getElementById('app-loading');
@@ -3827,7 +3825,7 @@ function deleteTournament(id){
 
 // Expose functions voor HTML onclick handlers
 Object.assign(window,{
-  _dbg:()=>({games,players}),
+  _dbg:()=>({games,players,tournaments,current,_dirty:[..._dirty],_savePending}),
   switchView,
   showToast,
   openModal,
