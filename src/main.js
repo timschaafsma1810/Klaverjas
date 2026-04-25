@@ -131,8 +131,8 @@ function recalcPlayerStats(){
     p.roundsPlayed=0; p.roundsKaap=0;
   });
   games.forEach(g=>{
-    if(g.active) return;
     if(g.deletedAt) return;
+    const isActive=!!g.active;
     const finalWij=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
     const finalZij=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
     const wijWon=finalWij>finalZij;
@@ -147,11 +147,14 @@ function recalcPlayerStats(){
       const p=getPlayer(pid);if(!p) return;
       const isWij=allWijIds.includes(pid);
       p.games++;
-      p.totalPointDiff+=(isWij?finalWij:finalZij)-(isWij?finalZij:finalWij);
-      if(draw) p.draws++;
-      else if((isWij&&wijWon)||(!isWij&&!wijWon)) p.wins++;
-      else p.losses++;
-      // Punten alleen van voltooide bomen
+      // Winst/verlies/punten alleen voor afgeronde bomen
+      if(!isActive){
+        p.totalPointDiff+=(isWij?finalWij:finalZij)-(isWij?finalZij:finalWij);
+        if(draw) p.draws++;
+        else if((isWij&&wijWon)||(!isWij&&!wijWon)) p.wins++;
+        else p.losses++;
+      }
+      // Gemiddelde punten en roem alleen van voltooide bomen
       if(g.completed){
         p.rounds+=g.rounds.length;
         const myScore=isWij?finalWij:finalZij;
@@ -165,7 +168,7 @@ function recalcPlayerStats(){
           p.totalRoemScore+=Math.max(0,roem);
         });
       }
-      // Nat/pit/verz: alleen tellen als de speler op dat moment actief was
+      // Nat/pit/verz: altijd tellen (ook lopende bomen)
       const teamKey=isWij?'wij':'zij';
       g.rounds.forEach((r,idx)=>{
         if(!r.special) return;
