@@ -165,8 +165,16 @@ function recalcPlayerStats(){
           p.totalRoemScore+=Math.max(0,roem);
         });
       }
-      if(isWij){p.nat+=countSp('NAT WIJ');p.verz+=countSp('VERZ WIJ');p.pit+=countSp('PIT WIJ');}
-      else{p.nat+=countSp('NAT ZIJ');p.verz+=countSp('VERZ ZIJ');p.pit+=countSp('PIT ZIJ');}
+      // Nat/pit/verz: alleen tellen als de speler op dat moment actief was
+      const teamKey=isWij?'wij':'zij';
+      g.rounds.forEach((r,idx)=>{
+        if(!r.special) return;
+        const sp=r.special.toUpperCase();
+        const active=getActiveTeamAtRound(g,teamKey,idx);
+        if(!active.includes(pid)) return;
+        if(isWij){if(sp.includes('NAT WIJ'))p.nat++;if(sp.includes('VERZ WIJ'))p.verz++;if(sp.includes('PIT WIJ'))p.pit++;}
+        else{if(sp.includes('NAT ZIJ'))p.nat++;if(sp.includes('VERZ ZIJ'))p.verz++;if(sp.includes('PIT ZIJ'))p.pit++;}
+      });
     });
     g.rounds.forEach(r=>{
       // Gebruik spelId als primaire identifier (spelWij/spelZij als fallback voor legacy data)
@@ -588,6 +596,31 @@ function getGameTeamIds(g, team){
 }
 function getGameTeamNames(g, team){
   return getGameTeamIds(g,team).map(id=>getPlayer(id)?.name||'?').join(' & ');
+}
+
+// Geeft de actief spelende spelers voor een team op een specifiek blaadje (0-indexed).
+// Reconstrueert de beginopstelling en past wisselingen toe tot en met roundIdx.
+function getActiveTeamAtRound(g, team, roundIdx){
+  const prefix=team==='wij'?'wij':'zij';
+  const lineup=[...(team==='wij'?g.wij:g.zij)];
+  const wiss=g.wisselingen||[];
+  // Stap 1: draai alle wisselingen terug → beginopstelling
+  [...wiss].reverse().forEach(w=>{
+    for(const sfx of ['','2']){
+      const uit=w[prefix+'Uit'+sfx],inn=w[prefix+'In'+sfx];
+      if(uit&&inn){const i=lineup.indexOf(inn);if(i>=0)lineup[i]=uit;}
+    }
+  });
+  // Stap 2: pas wisselingen toe tot en met roundIdx
+  wiss.forEach(w=>{
+    if(w.blaadje<=roundIdx){
+      for(const sfx of ['','2']){
+        const uit=w[prefix+'Uit'+sfx],inn=w[prefix+'In'+sfx];
+        if(uit&&inn){const i=lineup.indexOf(uit);if(i>=0)lineup[i]=inn;}
+      }
+    }
+  });
+  return lineup;
 }
 
 // ══════════════════════════════════════════
@@ -2719,21 +2752,33 @@ function openRecordRanking(type){
   function buildDuoMap(){
     const dm={};
     games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
-      // Alleen bankspelers die daadwerkelijk zijn ingewisseld tellen mee
       const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
       const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
       const wA=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
       const zA=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
       const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
       const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
+      // Winst/punten: voor alle paren die samen hebben meegespeeld
       [[wA,true],[zA,false]].forEach(([team,isWij])=>{
         for(let a=0;a<team.length;a++) for(let b=a+1;b<team.length;b++){
           const key=getDuoKey(team[a],team[b]);
           if(!dm[key]) dm[key]={p1:Math.min(team[a],team[b]),p2:Math.max(team[a],team[b]),games:0,wins:0,pts:0,nat:0};
           const d=dm[key];d.games++;d.pts+=(isWij?fw:fz)||0;
           if(isWij?fw>fz:fz>fw) d.wins++;
-          g.rounds.forEach(r=>{if(r.special){const tag=isWij?'WIJ':'ZIJ';if(r.special.includes('NAT '+tag))d.nat++;}});
         }
+      });
+      // Nat: alleen voor het actieve paar op dat specifieke blaadje
+      g.rounds.forEach((r,idx)=>{
+        if(!r.special) return;
+        const sp=r.special.toUpperCase();
+        ['wij','zij'].forEach((team,ti)=>{
+          const tag=ti===0?'WIJ':'ZIJ';
+          if(!sp.includes('NAT '+tag)) return;
+          const pair=getActiveTeamAtRound(g,team,idx);
+          if(pair.length<2) return;
+          const key=getDuoKey(pair[0],pair[1]);
+          if(dm[key]) dm[key].nat++;
+        });
       });
     });
     return Object.values(dm).filter(d=>d.games>0);
@@ -3413,7 +3458,10 @@ function renderRecordsStats(){
       // Build duo map incl. bench players (consistent with renderDuoStats)
       const duoMap={};
       games.filter(g=>!g.active&&!g.deletedAt).forEach(g=>{
-        const wA=[...g.wij,...(g.wijBench||[])],zA=[...g.zij,...(g.zijBench||[])];
+        const wijEverIn=new Set((g.wisselingen||[]).map(w=>w.wijIn).filter(Boolean));
+        const zijEverIn=new Set((g.wisselingen||[]).map(w=>w.zijIn).filter(Boolean));
+        const wA=[...g.wij,...(g.wijBench||[]).filter(id=>wijEverIn.has(id))];
+        const zA=[...g.zij,...(g.zijBench||[]).filter(id=>zijEverIn.has(id))];
         const fw=(typeof g.finalWij==='number')?g.finalWij:g.scoreWij;
         const fz=(typeof g.finalZij==='number')?g.finalZij:g.scoreZij;
         [[wA,true],[zA,false]].forEach(([team,isWij])=>{
@@ -3422,8 +3470,20 @@ function renderRecordsStats(){
             if(!duoMap[key]) duoMap[key]={p1:Math.min(team[a],team[b]),p2:Math.max(team[a],team[b]),games:0,wins:0,pts:0,nat:0};
             const d=duoMap[key];d.games++;d.pts+=(isWij?fw:fz)||0;
             if(isWij?fw>fz:fz>fw) d.wins++;
-            g.rounds.forEach(r=>{if(r.special){const tag=isWij?'WIJ':'ZIJ';if(r.special.includes('NAT '+tag))d.nat++;}});
           }
+        });
+        // Nat: alleen voor het actieve paar op dat specifieke blaadje
+        g.rounds.forEach((r,idx)=>{
+          if(!r.special) return;
+          const sp=r.special.toUpperCase();
+          ['wij','zij'].forEach((team,ti)=>{
+            const tag=ti===0?'WIJ':'ZIJ';
+            if(!sp.includes('NAT '+tag)) return;
+            const pair=getActiveTeamAtRound(g,team,idx);
+            if(pair.length<2) return;
+            const key=getDuoKey(pair[0],pair[1]);
+            if(duoMap[key]) duoMap[key].nat++;
+          });
         });
       });
       const duos=Object.values(duoMap).filter(d=>d.games>0);
@@ -3703,10 +3763,17 @@ function _buildTournamentTabContent(t, tab){
         pStats[pid].games++;pStats[pid].totalScore+=myScore;
         if(myScore>oppScore) pStats[pid].wins++;else if(myScore<oppScore) pStats[pid].losses++;
         if(g.completed){
-          g.rounds.forEach(r=>{
-            const sp=(r.special||'').toUpperCase();
-            if(isWij){if(sp.includes('NAT WIJ'))pStats[pid].nat++;if(sp.includes('VERZ WIJ'))pStats[pid].verz++;if(sp.includes('PIT WIJ'))pStats[pid].pit++;}
-            else{if(sp.includes('NAT ZIJ'))pStats[pid].nat++;if(sp.includes('VERZ ZIJ'))pStats[pid].verz++;if(sp.includes('PIT ZIJ'))pStats[pid].pit++;}
+          const teamKey=isWij?'wij':'zij';
+          g.rounds.forEach((r,idx)=>{
+            // Nat/pit/verz: alleen voor actief spelende spelers op dat blaadje
+            if(r.special){
+              const active=getActiveTeamAtRound(g,teamKey,idx);
+              if(active.includes(pid)){
+                const sp=r.special.toUpperCase();
+                if(isWij){if(sp.includes('NAT WIJ'))pStats[pid].nat++;if(sp.includes('VERZ WIJ'))pStats[pid].verz++;if(sp.includes('PIT WIJ'))pStats[pid].pit++;}
+                else{if(sp.includes('NAT ZIJ'))pStats[pid].nat++;if(sp.includes('VERZ ZIJ'))pStats[pid].verz++;if(sp.includes('PIT ZIJ'))pStats[pid].pit++;}
+              }
+            }
             const award=getRoundAward(g,r);
             pStats[pid].totalRoem+=isWij?award.roemWij:award.roemZij;
           });
