@@ -3710,7 +3710,7 @@ function endTournament(){
 
 function getTournamentStandings(t){
   const tStart=new Date(t.date).getTime();
-  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id))&&new Date(g.date).getTime()>=tStart);
+  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id))&&!g.deletedAt&&new Date(g.date).getTime()>=tStart);
   const stats={};
   tourGames.forEach(g=>{
     // Inclusief bankspelers die daadwerkelijk zijn ingewisseld (zelfde logica als recalcPlayerStats)
@@ -3740,7 +3740,7 @@ function getTournamentStandings(t){
 // Gedeelde content-builder voor toernooi tabs (hoofdpagina + detail modal)
 function _buildTournamentTabContent(t, tab){
   const tStart=new Date(t.date).getTime();
-  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id))&&new Date(g.date).getTime()>=tStart);
+  const tourGames=games.filter(g=>t.gameIds.includes(String(g.id))&&!g.deletedAt&&new Date(g.date).getTime()>=tStart);
   const bomen=tourGames.length;
   if(tab==='standen'){
     const standings=getTournamentStandings(t);
