@@ -3873,7 +3873,7 @@ function renderToernooi(){
   const histList=document.getElementById('toernooi-history-list');
   if(histList) histList.innerHTML=pastTournaments.length?pastTournaments.map(t=>{
     const tS=new Date(t.date).getTime();
-    const bomen=games.filter(g=>t.gameIds.includes(String(g.id))&&new Date(g.date).getTime()>=tS).length;
+    const bomen=games.filter(g=>t.gameIds.includes(String(g.id))&&!g.deletedAt&&new Date(g.date).getTime()>=tS).length;
     const d=new Date(t.date).toLocaleDateString('nl-NL',{day:'numeric',month:'long',year:'numeric'});
     return `<div class="game-tile" onclick="openTournamentDetail('${t.id}')">
       <div class="game-tile-header"><span class="game-date">${d}</span><span style="font-size:11px;color:rgba(245,240,232,.4)">${bomen} bomen</span></div>
@@ -3885,7 +3885,7 @@ function renderToernooi(){
 function renderTournamentDetailTab(id,tab){
   const t=tournaments.find(x=>String(x.id)===String(id));if(!t) return;
   const tStart=new Date(t.date).getTime();
-  const bomen=games.filter(g=>t.gameIds.includes(String(g.id))&&new Date(g.date).getTime()>=tStart).length;
+  const bomen=games.filter(g=>t.gameIds.includes(String(g.id))&&!g.deletedAt&&new Date(g.date).getTime()>=tStart).length;
   const d=new Date(t.date).toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   const tabs=[{k:'standen',l:'🏆 Standen'},{k:'stats',l:'📊 Statistieken'},{k:'bomen',l:'🌳 Bomen'}];
   const tabBar=`<div style="display:flex;gap:6px;margin-bottom:16px;overflow-x:auto">
