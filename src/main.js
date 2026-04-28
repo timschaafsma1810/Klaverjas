@@ -118,6 +118,42 @@ async function _doSaveAll(){
   }
 }
 
+// Sluit automatisch actieve bomen die langer dan 6 uur geleden zijn gestart.
+// Dit voorkomt dat vergeten bomen eeuwig "actief" blijven.
+function _autoCloseStaleGames(){
+  const SIX_HOURS=6*3600000;
+  const now=Date.now();
+  let changed=false;
+  games.forEach(g=>{
+    if(!g.active||!g.date) return;
+    if(now-new Date(g.date).getTime()<SIX_HOURS) return;
+    // Automatisch afsluiten
+    g.active=false;
+    g.finalWij=g.scoreWij??0;
+    g.finalZij=g.scoreZij??0;
+    g.endDate=new Date(new Date(g.date).getTime()+SIX_HOURS).toISOString(); // eindtijd = start + 6u
+    g.completed=g.rounds.length>=16;
+    // Toevoegen aan actief toernooi indien van toepassing
+    const activeTournament=tournaments.find(t=>t.active);
+    if(activeTournament&&!activeTournament.gameIds.includes(String(g.id))){
+      if(new Date(g.date).getTime()>=new Date(activeTournament.date).getTime())
+        activeTournament.gameIds.push(String(g.id));
+    }
+    // Als dit het huidige spel was, vrijgeven
+    if(current&&String(current.id)===String(g.id)){
+      current=null;
+      localStorage.removeItem('kj_viewing_id');
+    }
+    changed=true;
+    console.log(`Auto-gesloten: boom ${g.id} (gestart ${g.date})`);
+  });
+  if(changed){
+    showToast('⏰ Een vergeten boom is automatisch afgesloten');
+    saveAll(true);
+    if(tournaments.find(t=>t.active)) saveTournaments();
+  }
+}
+
 // Recalculate per-player aggregated stats from all stored games.
 function recalcPlayerStats(){
   // Reset all aggregated fields
@@ -3638,6 +3674,7 @@ function _applyConvexData(data){
   }
   if(_localGamePending && !current) _localGamePending = null;
   _convexReady = true;
+  _autoCloseStaleGames(); // sluit vergeten bomen automatisch na 6 uur
   recalcPlayerStats(); // altijd stats bijwerken na Convex-update
   _refreshActiveView();
   // Verberg laadscherm zodra data binnenkomt
