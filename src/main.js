@@ -3055,11 +3055,14 @@ function renderSpelersLeaderboard(){
   }
   const medals=['🥇','🥈','🥉'];
 
-  // Samengestelde score: winrate 35% · avg kaartpunten/boom 40% · avg roem/boom 15% · wins (absoluut) 10%
+  const MIN_BOMEN=5;
   const activePlayers=players.filter(p=>p.games>0);
-  const maxCard=Math.max(...activePlayers.map(p=>p.games?(p.totalCardScore||0)/p.games:0),1);
-  const maxRoem2=Math.max(...activePlayers.map(p=>p.games?(p.totalRoemScore||0)/p.games:0),1);
-  const maxWins2=Math.max(...activePlayers.map(p=>p.wins||0),1);
+  const qualified=activePlayers.filter(p=>p.games>=MIN_BOMEN);
+  const toWeinig=activePlayers.filter(p=>p.games<MIN_BOMEN);
+  // Normalisatiefactoren alleen op gekwalificeerde spelers baseren
+  const maxCard=Math.max(...qualified.map(p=>(p.totalCardScore||0)/p.games),1);
+  const maxRoem2=Math.max(...qualified.map(p=>(p.totalRoemScore||0)/p.games),1);
+  const maxWins2=Math.max(...qualified.map(p=>p.wins||0),1);
   const playerScore=p=>{
     if(!p.games) return 0;
     const wr=p.wins/p.games;
@@ -3068,10 +3071,6 @@ function renderSpelersLeaderboard(){
     const wins=(p.wins||0)/maxWins2;
     return wr*0.35 + card*0.40 + roem*0.15 + wins*0.10;
   };
-
-  const MIN_BOMEN=5;
-  const qualified=activePlayers.filter(p=>p.games>=MIN_BOMEN);
-  const toWeinig=activePlayers.filter(p=>p.games>0&&p.games<MIN_BOMEN);
   const rankedQ=[...qualified].sort((a,b)=>playerScore(b)-playerScore(a));
 
   const makeRow=(p,i,isQualified)=>{
@@ -3559,16 +3558,19 @@ function renderDuoStats(){
     });
   });
 
+  const MIN_BOMEN_DUO=3;
   const allEntries=Object.values(duos)
     .filter(d=>d.games>0&&getPlayer(d.p1)&&getPlayer(d.p2));
 
   if(!allEntries.length) return `<div class="empty"><div class="empty-icon">👫</div><div class="empty-text">Nog geen duo-data</div></div>`;
 
-  // Samengestelde score: winrate 35% · avg kaartpunten/boom 40% · avg roem/boom 15% · wins (absoluut) 10%
-  // Alles genormaliseerd naar 0–1 op basis van het maximum in de huidige dataset
-  const maxCard=Math.max(...allEntries.map(d=>d.games?(d.totalGamePoints-d.totalGameRoem)/d.games:0),1);
-  const maxRoem=Math.max(...allEntries.map(d=>d.games?d.totalGameRoem/d.games:0),1);
-  const maxWins=Math.max(...allEntries.map(d=>d.wins||0),1);
+  const qualifiedDuos=allEntries.filter(d=>d.games>=MIN_BOMEN_DUO);
+  const toWeinigDuos=allEntries.filter(d=>d.games<MIN_BOMEN_DUO);
+
+  // Normalisatiefactoren alleen op gekwalificeerde duo's
+  const maxCard=Math.max(...(qualifiedDuos.length?qualifiedDuos:[allEntries[0]]).map(d=>(d.totalGamePoints-d.totalGameRoem)/d.games),1);
+  const maxRoem=Math.max(...(qualifiedDuos.length?qualifiedDuos:[allEntries[0]]).map(d=>d.totalGameRoem/d.games),1);
+  const maxWins=Math.max(...(qualifiedDuos.length?qualifiedDuos:[allEntries[0]]).map(d=>d.wins||0),1);
   const duoScore=d=>{
     const wr=d.games?d.wins/d.games:0;
     const card=d.games?((d.totalGamePoints-d.totalGameRoem)/d.games)/maxCard:0;
@@ -3577,7 +3579,7 @@ function renderDuoStats(){
     return wr*0.35 + card*0.40 + roem*0.15 + wins*0.10;
   };
 
-  const sorted=[...allEntries].sort((a,b)=>duoScore(b)-duoScore(a));
+  const sorted=[...qualifiedDuos].sort((a,b)=>duoScore(b)-duoScore(a));
 
   // Sla duos op (gesorteerd op score) voor openPlayerDuos
   window._duoEntries=sorted;
@@ -3633,7 +3635,7 @@ function renderDuoStats(){
   }
 
   const top5=sorted.slice(0,5);
-  const bottom5=[...sorted].reverse().slice(0,5).reverse();
+  const bottom5=sorted.length>1?[...sorted].reverse().slice(0,5).reverse():[];
 
   // Speler-chips: alle spelers die in minstens 1 duo zitten
   const inDuoIds=new Set(allEntries.flatMap(d=>[d.p1,d.p2]));
@@ -3661,8 +3663,23 @@ function renderDuoStats(){
         <button onclick="openScoreInfo()" style="background:rgba(201,168,76,.15);border:1px solid rgba(201,168,76,.3);color:rgba(201,168,76,.8);border-radius:50%;width:20px;height:20px;font-size:11px;cursor:pointer;padding:0;line-height:1;flex-shrink:0">ℹ</button>
       </div>
       <div style="font-size:11px;color:rgba(245,240,232,.35);margin-bottom:8px">Samengestelde score op basis van 4 factoren</div>
-      ${bottom5.map((d,i)=>duoRow(d,allEntries.length-bottom5.length+i)).join('<div style="height:1px;background:rgba(245,240,232,.06)"></div>')}
-    </div>`;
+      ${bottom5.length?bottom5.map((d,i)=>duoRow(d,sorted.length-bottom5.length+i)).join('<div style="height:1px;background:rgba(245,240,232,.06)"></div>'):'<div style="font-size:12px;color:rgba(245,240,232,.3);padding:8px 0">Nog niet genoeg gekwalificeerde duo\'s</div>'}
+    </div>
+    ${toWeinigDuos.length?`<div class="card">
+      <div class="card-label" style="margin-bottom:6px;color:rgba(245,240,232,.35)">Nog niet gekwalificeerd</div>
+      <div style="font-size:11px;color:rgba(245,240,232,.25);margin-bottom:10px">Minimaal ${MIN_BOMEN_DUO} bomen samen nodig</div>
+      ${toWeinigDuos.sort((a,b)=>b.games-a.games).map(d=>{
+        const p1=getPlayer(d.p1),p2=getPlayer(d.p2);if(!p1||!p2) return '';
+        const av1=p1.photo?`<img src="${p1.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p1.name[0]}`;
+        const av2=p2.photo?`<img src="${p2.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p2.name[0]}`;
+        return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid rgba(245,240,232,.05);opacity:.5">
+          <div style="display:flex"><div class="avatar" style="width:28px;height:28px;font-size:11px">${av1}</div><div class="avatar" style="width:28px;height:28px;font-size:11px;margin-left:-5px">${av2}</div></div>
+          <div style="flex:1;font-size:13px;font-weight:600">${p1.name} & ${p2.name}</div>
+          <div style="font-size:11px;color:rgba(245,240,232,.3)">${d.games}/${MIN_BOMEN_DUO} bomen</div>
+        </div>`;
+      }).join('')}
+    </div>`:''}
+    `;
 }
 
 function openScoreInfo(){
