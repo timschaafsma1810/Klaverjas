@@ -167,14 +167,13 @@ async function _enterGroup(groupId,groupName){
   _activeGroupId=groupId;_activeGroupName=groupName;
   localStorage.setItem('kj_active_group',JSON.stringify({id:groupId,name:groupName}));
   document.getElementById('screen-groups').style.display='none';
-  // Update header
   const hBtn=document.getElementById('header-group-btn');
   const hName=document.getElementById('header-group-name');
   if(hBtn){hBtn.style.display='block';}
   if(hName) hName.textContent=groupName;
-  // Laad data voor deze groep
   _initMainApp();
 }
+window._enterGroup=_enterGroup;
 
 function switchGroup(){
   // Ontkoppel huidige data
@@ -388,12 +387,16 @@ async function _subscribeToGroupData(){
     document.getElementById('screen-auth').style.display='flex';
     return;
   }
-  // Laad data direct via query (eenmalig) zodat laadscherm altijd verdwijnt
+  // Laad data direct via query (eenmalig) — met timeout zodat laadscherm altijd verdwijnt
   try{
-    const data=await _client.query(_api.data.getData,{groupId:_activeGroupId});
+    const timeout=new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),6000));
+    const data=await Promise.race([
+      _client.query(_api.data.getData,{groupId:_activeGroupId}),
+      timeout
+    ]);
     if(data) _applyConvexData(data);
   }catch(e){
-    console.error('getData query fout:',e);
+    console.error('getData fout:',e);
     const loader=document.getElementById('app-loading');
     if(loader) loader.remove();
   }
