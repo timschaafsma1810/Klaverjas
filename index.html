@@ -318,7 +318,10 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:var(--gold)">Mijn groepen</div>
-      <button onclick="doLogout()" style="background:none;border:none;color:rgba(245,240,232,.4);font-size:12px;cursor:pointer;padding:6px 0">Uitloggen</button>
+      <div style="display:flex;gap:12px;align-items:center">
+        <button onclick="openChangePinModal()" style="background:none;border:none;color:rgba(245,240,232,.4);font-size:12px;cursor:pointer;padding:6px 0">🔑 PIN wijzigen</button>
+        <button onclick="doLogout()" style="background:none;border:none;color:rgba(245,240,232,.4);font-size:12px;cursor:pointer;padding:6px 0">Uitloggen</button>
+      </div>
     </div>
     <div id="groups-username" style="font-size:13px;color:rgba(245,240,232,.5);margin-bottom:24px"></div>
 
@@ -715,6 +718,9 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
     <div class="section-title">Statistieken</div>
     <div class="section-sub">Duo's, combinaties &amp; records</div>
   </div>
+  <div style="padding:0 16px 8px;display:flex;justify-content:flex-end">
+    <button id="stats-scope-btn" onclick="toggleGlobalStats()" style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);color:rgba(201,168,76,.7);border-radius:20px;font-size:11px;font-weight:600;cursor:pointer;padding:5px 12px">🌐 Alle groepen</button>
+  </div>
   <div class="filter-row" id="stats-filter-row"><div class="filter-chip active" onclick="setStatsFilter(&#39;algemeen&#39;)">📊 Algemeen</div><div class="filter-chip " onclick="setStatsFilter(&#39;duo&#39;)">👫 Duo's</div><div class="filter-chip " onclick="setStatsFilter(&#39;tegenstanders&#39;)">⚔️ vs Tegenstanders</div><div class="filter-chip " onclick="setStatsFilter(&#39;records&#39;)">🏆 Records</div></div>
   <div id="stats-content"><div class="empty"><div class="empty-icon">📊</div><div class="empty-text">Nog geen statistieken</div><div class="empty-sub">Speel eerst een paar bomen!</div></div></div>
 </div>
@@ -763,6 +769,22 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
 </div>
 
 <!-- ══ GROEPEN MODALS ══ -->
+<div class="modal-overlay" id="modal-change-pin">
+  <div class="modal">
+    <div class="modal-title">🔑 PIN wijzigen <span class="modal-close" onclick="closeModal('modal-change-pin')">✕</span></div>
+    <label>Huidige PIN</label>
+    <input type="password" id="change-pin-old" placeholder="Huidige PIN of wachtwoord..."
+      style="width:100%;padding:11px 13px;background:rgba(0,0,0,.25);border:1.5px solid rgba(201,168,76,.3);
+      border-radius:10px;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:10px">
+    <label>Nieuwe PIN</label>
+    <input type="password" id="change-pin-new" placeholder="Nieuwe PIN of wachtwoord..."
+      style="width:100%;padding:11px 13px;background:rgba(0,0,0,.25);border:1.5px solid rgba(201,168,76,.3);
+      border-radius:10px;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:10px">
+    <div id="change-pin-error" style="display:none;color:#e74c3c;font-size:13px;margin-bottom:8px"></div>
+    <button id="change-pin-btn" onclick="doChangePin()" class="btn btn-primary" style="width:100%">PIN wijzigen →</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-join-group">
   <div class="modal">
     <div class="modal-title">🔑 Groep joinen <span class="modal-close" onclick="closeModal('modal-join-group')">✕</span></div>

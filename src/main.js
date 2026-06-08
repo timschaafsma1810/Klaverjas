@@ -12,6 +12,8 @@ let _activeGroupId=null;
 let _activeGroupName=null;
 let _unsubData=null;
 let _authMode='login'; // 'login' | 'register'
+let _statsScope='group'; // 'group' | 'global'
+let _globalPlayers=null;
 
 function _loadSession(){
   try{const s=JSON.parse(localStorage.getItem('kj_session')||'null');if(s?.userId){_userId=s.userId;_userName=s.name;_userIsAdmin=s.isAdmin||false;}}catch{}
@@ -107,14 +109,42 @@ window.doAuth=doAuth;
 
 function doLogout(){
   _clearSession();
-  // Reset UI
   players=[];games=[];current=null;tournaments=[];
+  _statsScope='group';_globalPlayers=null;
   document.getElementById('screen-groups').style.display='none';
   document.getElementById('screen-auth').style.display='flex';
   document.getElementById('header-group-btn').style.display='none';
   const btn=document.getElementById('btn-admin');
   if(btn) btn.style.display='none';
   setTimeout(()=>document.getElementById('auth-name')?.focus(),100);
+}
+
+function openChangePinModal(){
+  const el=document.getElementById('change-pin-error');
+  if(el) el.style.display='none';
+  document.getElementById('change-pin-old').value='';
+  document.getElementById('change-pin-new').value='';
+  openModal('modal-change-pin');
+}
+
+async function doChangePin(){
+  const oldPin=(document.getElementById('change-pin-old')?.value||'').trim();
+  const newPin=(document.getElementById('change-pin-new')?.value||'').trim();
+  const errEl=document.getElementById('change-pin-error');
+  errEl.style.display='none';
+  if(!oldPin||!newPin){errEl.textContent='Vul beide velden in';errEl.style.display='block';return;}
+  const btn=document.getElementById('change-pin-btn');
+  btn.disabled=true;btn.textContent='Even geduld...';
+  try{
+    await _client.mutation(_api.auth.changePin,{userId:_userId,oldPin,newPin});
+    closeModal('modal-change-pin');
+    showToast('✓ PIN gewijzigd');
+  }catch(e){
+    errEl.textContent=e.data||e.message||'Er ging iets mis';
+    errEl.style.display='block';
+  }finally{
+    btn.disabled=false;btn.textContent='PIN wijzigen →';
+  }
 }
 
 // ── Groepen scherm ────────────────────────
@@ -3039,19 +3069,23 @@ function renderSpelersLeaderboard(){
     return wr*0.35 + card*0.40 + roem*0.15 + wins*0.10;
   };
 
-  const ranked=[...players].sort((a,b)=>playerScore(b)-playerScore(a));
+  const MIN_BOMEN=5;
+  const qualified=activePlayers.filter(p=>p.games>=MIN_BOMEN);
+  const toWeinig=activePlayers.filter(p=>p.games>0&&p.games<MIN_BOMEN);
+  const rankedQ=[...qualified].sort((a,b)=>playerScore(b)-playerScore(a));
 
-  const rows=ranked.map((p,i)=>{
+  const makeRow=(p,i,isQualified)=>{
     const wr=p.games?Math.round(p.wins/p.games*100):null;
     const avgCard2=p.games?Math.round((p.totalCardScore||0)/p.games):null;
     const avgRoem2=p.games?Math.round((p.totalRoemScore||0)/p.games):null;
     const score=Math.round(playerScore(p)*100);
     const avImg=p.photo?`<img src="${p.photo}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%">`:`${p.name[0].toUpperCase()}`;
     const form=getPlayerForm(p.id);
-    const rank=i<3?`<span style="font-size:18px">${medals[i]}</span>`:`<span style="font-size:13px;color:rgba(245,240,232,.35);font-weight:700">${i+1}</span>`;
+    const rank=isQualified?(i<3?`<span style="font-size:18px">${medals[i]}</span>`:`<span style="font-size:13px;color:rgba(245,240,232,.35);font-weight:700">${i+1}</span>`)
+      :`<span style="font-size:13px;color:rgba(245,240,232,.2)">—</span>`;
     const flame=form.streak>=3&&form.streakType==='W'?' 🔥':'';
     const ice=form.streak>=3&&form.streakType==='V'?' 🥶':'';
-    return `<div class="player-tile" onclick="openProfile(${p.id})" style="padding:12px 16px">
+    return `<div class="player-tile" onclick="openProfile(${p.id})" style="padding:12px 16px${isQualified?'':';opacity:.6'}">
       <div style="display:flex;align-items:center;gap:12px">
         <div style="width:26px;text-align:center;flex-shrink:0">${rank}</div>
         <div class="avatar" style="width:44px;height:44px;font-size:16px;flex-shrink:0">${avImg}</div>
@@ -3059,24 +3093,27 @@ function renderSpelersLeaderboard(){
           <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
             <span style="font-weight:700;font-size:15px">${p.name}${flame}${ice}</span>
             <div style="text-align:right">
-              <div style="font-size:14px;font-weight:800;color:var(--gold)">${p.games?score:'—'}</div>
-              <div style="font-size:9px;color:rgba(201,168,76,.5)">score</div>
+              ${isQualified?`<div style="font-size:14px;font-weight:800;color:var(--gold)">${score}</div><div style="font-size:9px;color:rgba(201,168,76,.5)">score</div>`
+                :`<div style="font-size:10px;color:rgba(245,240,232,.3)">${p.games}/${MIN_BOMEN} bomen</div>`}
             </div>
           </div>
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;font-size:11px;color:rgba(245,240,232,.55);margin-bottom:${form.last5.length?'6':'0'}px">
+          ${isQualified?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:2px 8px;font-size:11px;color:rgba(245,240,232,.55);margin-bottom:${form.last5.length?'6':'0'}px">
             <span>🏆 ${p.wins}× gewonnen</span>
             <span>📈 ${wr!==null?wr+'%':'—'} winrate</span>
             <span>📊 ${avgCard2!==null?avgCard2:'—'} kaart/boom</span>
             <span>🌟 ${avgRoem2!==null?avgRoem2:'—'} roem/boom</span>
-          </div>
-          ${form.last5.length?`<div style="display:flex;gap:3px;align-items:center">
+          </div>`:`<div style="font-size:11px;color:rgba(245,240,232,.3);font-style:italic">Onvoldoende bomen gespeeld</div>`}
+          ${isQualified&&form.last5.length?`<div style="display:flex;gap:3px;align-items:center">
             <span style="font-size:9px;color:rgba(245,240,232,.3);margin-right:2px">LAATSTE</span>
             ${formBadges(form.last5)}
           </div>`:''}
         </div>
       </div>
     </div>`;
-  }).join('');
+  };
+
+  const rows=rankedQ.map((p,i)=>makeRow(p,i,true)).join('')
+    +(toWeinig.length?`<div style="font-size:11px;color:rgba(245,240,232,.25);padding:8px 16px 2px;text-transform:uppercase;letter-spacing:.5px">Nog niet gekwalificeerd</div>`+toWeinig.map(p=>makeRow(p,0,false)).join(''):'');
 
   return `<div style="display:flex;align-items:center;gap:8px;padding:12px 16px 4px">
       <div style="font-size:12px;font-weight:600;color:rgba(245,240,232,.4);flex:1">Samengestelde score op basis van 4 factoren</div>
@@ -3090,8 +3127,19 @@ function renderSpelersLeaderboard(){
 let duoStatsFilter='all';
 
 function renderStats(){
-  // Ensure player stats reflect current games before rendering stats
-  recalcPlayerStats();
+  if(_statsScope==='global'&&_globalPlayers){
+    // Tijdelijk global players gebruiken voor rendering
+    const _savedPlayers=players;
+    players=_globalPlayers;
+    _renderStatsUI(true);
+    players=_savedPlayers;
+  } else {
+    recalcPlayerStats();
+    _renderStatsUI(false);
+  }
+}
+
+function _renderStatsUI(isGlobal){
   const filterEl=document.getElementById('stats-filter-row');
   const filters=[
     {k:'spelers',l:'👥 Spelers'},
@@ -3101,7 +3149,44 @@ function renderStats(){
     {k:'records',l:'🏆 Records'},
   ];
   filterEl.innerHTML=filters.map(f=>`<div class="filter-chip ${statsFilter===f.k?'active':''}" onclick="setStatsFilter('${f.k}')">${f.l}</div>`).join('');
+  // Global toggle knop
+  const scopeEl=document.getElementById('stats-scope-btn');
+  if(scopeEl) scopeEl.textContent=isGlobal?'📍 Actieve groep':'🌐 Alle groepen';
+  if(isGlobal&&statsFilter!=='spelers') statsFilter='spelers';
   renderStatsContent();
+}
+
+async function toggleGlobalStats(){
+  if(_statsScope==='global'){
+    _statsScope='group';_globalPlayers=null;
+    renderStats();
+    return;
+  }
+  const btn=document.getElementById('stats-scope-btn');
+  if(btn){btn.disabled=true;btn.textContent='Laden...';}
+  try{
+    const groups=await _client.query(_api.groups.getMyGroups,{userId:_userId});
+    const merged={};
+    for(const g of groups){
+      const data=await _client.query(_api.data.getData,{groupId:g._id});
+      const gPlayers=data.kj_players||[];
+      for(const p of gPlayers){
+        if(!p.name) continue;
+        if(!merged[p.name]) merged[p.name]={...p,games:0,wins:0,losses:0,draws:0,totalCardScore:0,totalRoemScore:0};
+        const m=merged[p.name];
+        m.games+=(p.games||0);m.wins+=(p.wins||0);m.losses+=(p.losses||0);m.draws+=(p.draws||0);
+        m.totalCardScore+=(p.totalCardScore||0);m.totalRoemScore+=(p.totalRoemScore||0);
+        if(p.photo&&!m.photo) m.photo=p.photo;
+      }
+    }
+    _globalPlayers=Object.values(merged);
+    _statsScope='global';
+  }catch(e){
+    showToast('Kon globale data niet laden');
+  }finally{
+    if(btn) btn.disabled=false;
+  }
+  renderStats();
 }
 
 function setStatsFilter(f){statsFilter=f;renderStats()}
@@ -4443,7 +4528,6 @@ Object.assign(window,{
   playVerzSound,
   playDestructionSound,
   showVerzFX,
-  checkAccessCode,
   showNatFX,
   showPitFX,
   showRookPauze,
@@ -4547,6 +4631,9 @@ Object.assign(window,{
   authTab,
   doAuth,
   doLogout,
+  openChangePinModal,
+  doChangePin,
+  toggleGlobalStats,
   switchGroup,
   doJoinGroup,
   doCreateGroup,

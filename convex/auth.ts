@@ -35,6 +35,19 @@ export const register = mutation({
   },
 });
 
+export const changePin = mutation({
+  args: { userId: v.id("users"), oldPin: v.string(), newPin: v.string() },
+  handler: async (ctx, { userId, oldPin, newPin }) => {
+    const user = await ctx.db.get(userId);
+    if (!user) throw new ConvexError("Gebruiker niet gevonden");
+    const oldHash = await hashPin(oldPin);
+    if (oldHash !== user.pinHash) throw new ConvexError("Huidige PIN klopt niet");
+    if (!newPin) throw new ConvexError("Nieuwe PIN is verplicht");
+    const newHash = await hashPin(newPin);
+    await ctx.db.patch(userId, { pinHash: newHash });
+  },
+});
+
 export const login = mutation({
   args: { name: v.string(), pin: v.string() },
   handler: async (ctx, { name, pin }) => {
