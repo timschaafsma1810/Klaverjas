@@ -379,32 +379,30 @@ function adminResetPin(targetId,name){
 }
 
 // ── App initialisatie ─────────────────────
-function _subscribeToGroupData(){
+async function _subscribeToGroupData(){
   if(_unsubData){_unsubData();_unsubData=null;}
   if(!_client||!_activeGroupId){
-    // Geen geldige sessie — ga terug naar auth
     const loader=document.getElementById('app-loading');
     if(loader) loader.remove();
     _clearSession();
     document.getElementById('screen-auth').style.display='flex';
     return;
   }
-  let received=false;
+  // Laad data direct via query (eenmalig) zodat laadscherm altijd verdwijnt
+  try{
+    const data=await _client.query(_api.data.getData,{groupId:_activeGroupId});
+    if(data) _applyConvexData(data);
+  }catch(e){
+    console.error('getData query fout:',e);
+    const loader=document.getElementById('app-loading');
+    if(loader) loader.remove();
+  }
+  // Zet daarna subscription op voor realtime updates
   _unsubData=_client.onUpdate(_api.data.getData,{groupId:_activeGroupId},(data)=>{
-    received=true;
     if(!data) return;
     if(_savePending>0){_pendingConvexData=data;return;}
     _applyConvexData(data);
   });
-  // Fallback: als data na 8 seconden nog niet arriveert, sessie wissen en auth tonen
-  setTimeout(()=>{
-    if(!received){
-      const loader=document.getElementById('app-loading');
-      if(loader) loader.remove();
-      _clearSession();
-      document.getElementById('screen-auth').style.display='flex';
-    }
-  },8000);
 }
 
 function _initMainApp(){
