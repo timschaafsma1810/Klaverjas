@@ -57,6 +57,7 @@ function authTab(tab){
   }
   document.getElementById('auth-error').style.display='none';
 }
+window.authTab=authTab;
 
 async function _loadClaimOptions(){
   // Haal bestaande spelers op uit Klaverbassie groep voor koppeling
@@ -95,6 +96,7 @@ async function doAuth(){
     btn.textContent=_authMode==='login'?'Inloggen →':'Account aanmaken →';
   }
 }
+window.doAuth=doAuth;
 
 function doLogout(){
   _clearSession();
