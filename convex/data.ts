@@ -5,7 +5,22 @@ import { v } from "convex/values";
 export const getData = query({
   args: { groupId: v.optional(v.id("groups")) },
   handler: async (ctx, { groupId }) => {
-    if (!groupId) return {};
+    if (!groupId) {
+      // Terugwaartse compatibiliteit: geef ongeprefixte data terug (oude app-versie)
+      const rows = await ctx.db.query("shared").collect();
+      const result: Record<string, unknown> = {};
+      for (const row of rows) {
+        if (row.key.includes(":")) continue; // sla groep-specifieke sleutels over
+        try { result[row.key] = JSON.parse(row.value); } catch { result[row.key] = null; }
+      }
+      const players = (result["kj_players"] as { id: number; photoId?: string }[]) ?? [];
+      const photoUrls: Record<string, string | null> = {};
+      for (const p of players) {
+        if (p.photoId) photoUrls[p.photoId] = await ctx.storage.getUrl(p.photoId as any);
+      }
+      result["kj_photo_urls"] = photoUrls;
+      return result;
+    }
 
     const prefix = groupId + ":";
     const rows = await ctx.db.query("shared").collect();

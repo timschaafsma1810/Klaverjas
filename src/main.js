@@ -397,6 +397,7 @@ function _initMainApp(){
 
 // ── Startup ───────────────────────────────
 (function initApp(){
+  localStorage.removeItem('kj_access'); // opruimen van oude toegangscode
   _loadSession();
   // Migratie altijd uitvoeren zodra client beschikbaar is (maakt Tibbush + Klaverbassie groep aan)
   if(_client){
