@@ -60,13 +60,20 @@ function authTab(tab){
 window.authTab=authTab;
 
 async function _loadClaimOptions(){
-  // Haal bestaande spelers op uit Klaverbassie groep voor koppeling
   if(!_client) return;
   try{
-    // Klaverbassie groep ID ophalen
-    const kgRow=await _client.query(_api.data.getData,{groupId:undefined});
-    // We doen dit via een directe query op de shared tabel — gebruik migratieresultaat
-    // Simpeler: laad via getData zonder groupId niet mogelijk, skip voor nu
+    const data=await _client.query(_api.data.getData,{});
+    const players=(data.kj_players||[]);
+    const sel=document.getElementById('auth-claim-select');
+    if(!sel) return;
+    sel.innerHTML='<option value="">— Geen, ik ben nieuw —</option>';
+    players.forEach(p=>{
+      if(!p.name) return;
+      const opt=document.createElement('option');
+      opt.value=String(p.id);
+      opt.textContent=p.name;
+      sel.appendChild(opt);
+    });
   }catch{}
 }
 
