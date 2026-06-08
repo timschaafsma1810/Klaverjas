@@ -446,24 +446,16 @@ if (!_convexUrl) {
 
 // ── Startup ───────────────────────────────
 (function initApp(){
-  localStorage.removeItem('kj_access'); // opruimen van oude toegangscode
-  _loadSession();
+  localStorage.removeItem('kj_access');
+  // Tijdelijk: altijd opnieuw inloggen (sessie niet vertrouwen totdat subscriptie stabiel is)
+  localStorage.removeItem('kj_session');
+  localStorage.removeItem('kj_active_group');
   // Migratie altijd uitvoeren zodra client beschikbaar is (maakt Tibbush + Klaverbassie groep aan)
   if(_client){
     _client.mutation(_api.groups.ensureMigration,{}).catch(()=>{});
   }
-  if(!_userId){
-    document.getElementById('screen-auth').style.display='flex';
-    setTimeout(()=>document.getElementById('auth-name')?.focus(),100);
-    return;
-  }
-  if(!_activeGroupId){
-    _showGroupsScreen();
-    return;
-  }
-  _initMainApp();
-  const adminBtn=document.getElementById('btn-admin');
-  if(adminBtn) adminBtn.style.display=_userIsAdmin?'inline-flex':'none';
+  document.getElementById('screen-auth').style.display='flex';
+  setTimeout(()=>document.getElementById('auth-name')?.focus(),100);
 })();
 
 // ══════════════════════════════════════════
