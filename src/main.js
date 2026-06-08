@@ -395,6 +395,25 @@ function _initMainApp(){
   _subscribeToGroupData();
 }
 
+// ══════════════════════════════════════════
+//  CONVEX SETUP
+// ══════════════════════════════════════════
+const _convexUrl = import.meta.env.VITE_CONVEX_URL;
+let _client;
+let _convexReady = false;
+let _localGamePending = null; // ID van lokaal aangemaakt spel nog niet bevestigd door Convex
+let _savePending = 0;         // Aantal saves in-flight — blokkeer onUpdate overschrijven
+let _pendingConvexData = null;// Gebufferde Convex update die wacht tot save klaar is
+let _saveDebounceTimer = null;// Debounce timer voor saveAll
+let _dirty = new Set();       // Welke sleutels zijn gewijzigd
+
+if (!_convexUrl) {
+  console.error('VITE_CONVEX_URL niet ingesteld! Maak een .env.local bestand aan.');
+  document.body.innerHTML = '<div style="color:white;padding:40px;font-family:sans-serif;background:#163d24;min-height:100vh"><h2>⚙️ Nog even instellen...</h2><p style="margin-top:12px">Voer in de terminal uit: <code style="background:rgba(0,0,0,.3);padding:4px 8px;border-radius:4px">npx convex dev</code><br><br>Kopieer daarna de URL naar een bestand <code>.env.local</code> in de map klaverjas.</p></div>';
+} else {
+  _client = new ConvexClient(_convexUrl);
+}
+
 // ── Startup ───────────────────────────────
 (function initApp(){
   localStorage.removeItem('kj_access'); // opruimen van oude toegangscode
@@ -416,26 +435,6 @@ function _initMainApp(){
   const adminBtn=document.getElementById('btn-admin');
   if(adminBtn) adminBtn.style.display=_userIsAdmin?'inline-flex':'none';
 })();
-
-// ══════════════════════════════════════════
-//  CONVEX SETUP
-// ══════════════════════════════════════════
-const _convexUrl = import.meta.env.VITE_CONVEX_URL;
-let _client;
-let _convexReady = false;
-let _localGamePending = null; // ID van lokaal aangemaakt spel nog niet bevestigd door Convex
-let _savePending = 0;         // Aantal saves in-flight — blokkeer onUpdate overschrijven
-let _pendingConvexData = null;// Gebufferde Convex update die wacht tot save klaar is
-let _saveDebounceTimer = null;// Debounce timer voor saveAll
-let _dirty = new Set();       // Welke sleutels zijn gewijzigd
-
-if (!_convexUrl) {
-  console.error('VITE_CONVEX_URL niet ingesteld! Maak een .env.local bestand aan.');
-  document.body.innerHTML = '<div style="color:white;padding:40px;font-family:sans-serif;background:#163d24;min-height:100vh"><h2>⚙️ Nog even instellen...</h2><p style="margin-top:12px">Voer in de terminal uit: <code style="background:rgba(0,0,0,.3);padding:4px 8px;border-radius:4px">npx convex dev</code><br><br>Kopieer daarna de URL naar een bestand <code>.env.local</code> in de map klaverjas.</p></div>';
-} else {
-  _client = new ConvexClient(_convexUrl);
-}
-
 
 // ══════════════════════════════════════════
 //  DATA & STORAGE
