@@ -381,12 +381,30 @@ function adminResetPin(targetId,name){
 // ── App initialisatie ─────────────────────
 function _subscribeToGroupData(){
   if(_unsubData){_unsubData();_unsubData=null;}
-  if(!_client||!_activeGroupId) return;
+  if(!_client||!_activeGroupId){
+    // Geen geldige sessie — ga terug naar auth
+    const loader=document.getElementById('app-loading');
+    if(loader) loader.remove();
+    _clearSession();
+    document.getElementById('screen-auth').style.display='flex';
+    return;
+  }
+  let received=false;
   _unsubData=_client.onUpdate(_api.data.getData,{groupId:_activeGroupId},(data)=>{
+    received=true;
     if(!data) return;
     if(_savePending>0){_pendingConvexData=data;return;}
     _applyConvexData(data);
   });
+  // Fallback: als data na 8 seconden nog niet arriveert, sessie wissen en auth tonen
+  setTimeout(()=>{
+    if(!received){
+      const loader=document.getElementById('app-loading');
+      if(loader) loader.remove();
+      _clearSession();
+      document.getElementById('screen-auth').style.display='flex';
+    }
+  },8000);
 }
 
 function _initMainApp(){
