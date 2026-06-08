@@ -1,4 +1,6 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
   "redirects": [
     {
       "source": "/(.*)",
@@ -8,6 +10,6 @@
     }
   ],
   "rewrites": [
-    { "source": "/((?!sounds|assets|favicon|manifest).*)", "destination": "/index.html" }
+    { "source": "/((?!sounds|assets|favicon|manifest|icons).*)", "destination": "/index.html" }
   ]
 }
