@@ -16,7 +16,9 @@ export const getData = query({
       const players = (result["kj_players"] as { id: number; photoId?: string }[]) ?? [];
       const photoUrls: Record<string, string | null> = {};
       for (const p of players) {
-        if (p.photoId) photoUrls[p.photoId] = await ctx.storage.getUrl(p.photoId as any);
+        if (p.photoId) {
+          try { photoUrls[p.photoId] = await ctx.storage.getUrl(p.photoId as any); } catch { photoUrls[p.photoId] = null; }
+        }
       }
       result["kj_photo_urls"] = photoUrls;
       return result;
@@ -42,7 +44,7 @@ export const getData = query({
     const photoUrls: Record<string, string | null> = {};
     for (const p of players) {
       if (p.photoId) {
-        photoUrls[p.photoId] = await ctx.storage.getUrl(p.photoId as any);
+        try { photoUrls[p.photoId] = await ctx.storage.getUrl(p.photoId as any); } catch { photoUrls[p.photoId] = null; }
       }
     }
     result["kj_photo_urls"] = photoUrls;

@@ -96,7 +96,7 @@ async function doAuth(){
     document.getElementById('screen-auth').style.display='none';
     _showGroupsScreen();
   }catch(e){
-    errEl.textContent=e.message||'Er ging iets mis';
+    errEl.textContent=e.data||e.message||'Er ging iets mis';
     errEl.style.display='block';
   }finally{
     btn.disabled=false;
@@ -4118,6 +4118,7 @@ function _refreshActiveView(){
 }
 
 function _applyConvexData(data){
+  try{
   const rawPlayers = data.kj_players ?? [];
   const photoUrls = data.kj_photo_urls ?? {}; // storageId → CDN-URL (opgelost in getData)
   players = rawPlayers.map(p=>{
@@ -4162,6 +4163,11 @@ function _applyConvexData(data){
   // Verberg laadscherm zodra data binnenkomt
   const loader=document.getElementById('app-loading');
   if(loader){loader.style.opacity='0';setTimeout(()=>loader.remove(),400);}
+  }catch(err){
+    console.error('_applyConvexData fout:',err);
+    const loader=document.getElementById('app-loading');
+    if(loader) loader.remove();
+  }
 }
 
 // Subscriptie wordt gestart via _subscribeToGroupData() na groepsselectie

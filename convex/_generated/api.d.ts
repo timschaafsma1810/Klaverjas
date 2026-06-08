@@ -10,6 +10,7 @@
 
 import type * as auth from "../auth.js";
 import type * as data from "../data.js";
+import type * as debug from "../debug.js";
 import type * as groups from "../groups.js";
 
 import type {
@@ -21,6 +22,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   data: typeof data;
+  debug: typeof debug;
   groups: typeof groups;
 }>;
 
