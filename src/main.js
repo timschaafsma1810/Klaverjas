@@ -408,6 +408,9 @@ function _subscribeToGroupData(){
 }
 
 function _initMainApp(){
+  // Toon laadscherm terwijl data opgehaald wordt
+  const loader=document.getElementById('app-loading');
+  if(loader) loader.style.display='flex';
   // Update header groep-knop
   const hBtn=document.getElementById('header-group-btn');
   const hName=document.getElementById('header-group-name');
