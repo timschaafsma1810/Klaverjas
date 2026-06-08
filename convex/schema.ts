@@ -17,7 +17,7 @@ export default defineSchema({
   groups: defineTable({
     name: v.string(),
     joinCode: v.string(),
-    createdBy: v.id("users"),
+    createdBy: v.optional(v.id("users")),
     imageStorageId: v.optional(v.string()),
     createdAt: v.string(),
     archivedAt: v.optional(v.string()),

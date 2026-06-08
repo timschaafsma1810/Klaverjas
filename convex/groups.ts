@@ -1,15 +1,6 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 
-async function hashPin(pin: string): Promise<string> {
-  const encoder = new TextEncoder();
-  const data = encoder.encode("kj:" + pin);
-  const hashBuffer = await crypto.subtle.digest("SHA-256", data);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, "0"))
-    .join("");
-}
-
 // Eenmalige migratie: maakt Klaverbassie groep aan en kopieert bestaande data
 export const ensureMigration = mutation({
   args: {},
@@ -24,34 +15,11 @@ export const ensureMigration = mutation({
       return kgRow ? kgRow.value : null;
     }
 
-    // Maak Tibbush aan als admin (tijdelijk wachtwoord = "klaverbassie", kan later resetten)
-    let tibbush = await ctx.db.query("users")
-      .withIndex("by_name", q => q.eq("name", "Tibbush"))
-      .first();
-    if (!tibbush) {
-      const pinHash = await hashPin("klaverbassie");
-      const id = await ctx.db.insert("users", {
-        name: "Tibbush",
-        pinHash,
-        isAdmin: true,
-        createdAt: new Date().toISOString(),
-      });
-      tibbush = await ctx.db.get(id);
-    }
-
-    // Maak Klaverbassie groep aan
+    // Maak Klaverbassie groep aan (zonder eigenaar — Tibbush registreert zichzelf)
     const groupId = await ctx.db.insert("groups", {
       name: "Klaverbassie",
       joinCode: "klaverbassie",
-      createdBy: tibbush!._id,
       createdAt: new Date().toISOString(),
-    });
-
-    // Voeg Tibbush toe als lid
-    await ctx.db.insert("memberships", {
-      userId: tibbush!._id,
-      groupId,
-      joinedAt: new Date().toISOString(),
     });
 
     // Kopieer bestaande data naar groep-specifieke sleutels
