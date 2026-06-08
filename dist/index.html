@@ -301,7 +301,7 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
       <!-- Bestaande speler koppelen (alleen bij registratie) -->
       <div id="auth-claim-section" style="display:none;margin-top:16px;border-top:1px solid rgba(201,168,76,.2);padding-top:16px">
         <div style="font-size:12px;color:rgba(245,240,232,.5);margin-bottom:8px">Zit je al in Klaverbassie? Koppel dan je bestaande profiel:</div>
-        <select id="auth-claim-select"
+        <select id="auth-claim-select" onchange="const n=this.options[this.selectedIndex].text;if(this.value)document.getElementById('auth-name').value=n;"
           style="width:100%;padding:11px 13px;background:rgba(0,0,0,.25);border:1.5px solid rgba(201,168,76,.3);
           border-radius:10px;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;margin-bottom:0">
           <option value="">— Geen, ik ben nieuw —</option>
