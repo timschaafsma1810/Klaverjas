@@ -1059,10 +1059,25 @@ function populateSelects(){
   if(zij1Val&&starterSel) starterSel.value=String(zij1Val);
 }
 
+const SPELVORM_DESC={
+  traditioneel:'Troef draaien: de persoon die uitkomt kiest de troefkleur of past. Iedereen speelt 16 blaadjes.',
+  verplicht:'Verplicht: de persoon die uitkomt is altijd de speler en moet een troefkleur kiezen (kan niet passen). Iedereen speelt 16 blaadjes.',
+  bieden:'Bieden (Contrée): de spelende partij biedt een aantal kaartpunten. Roem telt niet mee voor het bod maar wel voor de eindscore. Het spel stopt als een team 1500 punten heeft of na 16 blaadjes.'
+};
+function setSpelvorm(sv){
+  document.getElementById('sel-spelvorm').value=sv;
+  ['traditioneel','verplicht','bieden'].forEach(s=>{
+    const btn=document.getElementById('sv-btn-'+s);
+    if(btn) btn.classList.toggle('active',s===sv);
+  });
+  const desc=document.getElementById('sv-desc');
+  if(desc) desc.textContent=SPELVORM_DESC[sv]||'';
+}
 function openNewGameModal(){
   if(players.length<2){showToast('Voeg eerst minstens 2 spelers toe',true);switchView('players');return}
   populateSelects();
   updateStarterOptions();
+  setSpelvorm('traditioneel'); // reset naar standaard
   openModal('modal-new-game');
 }
 
@@ -1083,11 +1098,12 @@ function startNewGame(){
   if(!activeIds.map(String).includes(String(starter))) return showToast('Kies een starter die in deze boom zit',true);
   const wijBench=[w3,w4].filter(Boolean);
   const zijBench=[z3,z4].filter(Boolean);
+  const spelvorm=document.getElementById('sel-spelvorm')?.value||'traditioneel';
   const newGame={id:Date.now(),date:new Date().toISOString(),
     wij:[w1,w2],zij:[z1,z2],wijBench,zijBench,
     seatOrder:[w1,z1,w2,z2],starter,
     scoreWij:0,scoreZij:0,roemWij:0,roemZij:0,
-    wisselingen:[],rounds:[],active:true};
+    spelvorm,wisselingen:[],rounds:[],active:true};
   games.push(newGame);
   localStorage.setItem('kj_viewing_id',String(newGame.id));
   current=newGame;
@@ -1620,7 +1636,14 @@ function renderGame(){
     }
   }
   document.getElementById('round-num').textContent=rnd;
-  document.getElementById('ronde-progress').textContent=`blaadje ${Math.min(g.rounds.length+1,16)}/16 · takkie ${Math.ceil((g.rounds.length+1)/4)}/4`;
+  const spelvorm=g.spelvorm||'traditioneel';
+  const svBadge=document.getElementById('spelvorm-badge');
+  if(svBadge) svBadge.textContent=spelvorm==='verplicht'?'❗ Verplicht':spelvorm==='bieden'?'💰 Bieden':'';
+  if(spelvorm==='bieden'){
+    document.getElementById('ronde-progress').textContent=`blaadje ${Math.min(g.rounds.length+1,16)}/16 · Wij: ${g.scoreWij} · Zij: ${g.scoreZij} (doel: 1500)`;
+  } else {
+    document.getElementById('ronde-progress').textContent=`blaadje ${Math.min(g.rounds.length+1,16)}/16 · takkie ${Math.ceil((g.rounds.length+1)/4)}/4`;
+  }
 
   const seatPlayers=getSeatOrder(g);
   const starterIdx=Math.max(0,seatPlayers.indexOf(Number(g.starter)));
@@ -1653,11 +1676,25 @@ function renderGame(){
   const allOpts=getSeatOrder(g).map(id=>`<option value="${id}">${getPlayer(id)?.name||'?'}</option>`).join('');
   const spelSelect=document.getElementById('sel-speler');
   spelSelect.innerHTML=`<option value="">— Kies wie speelt —</option>`+allOpts;
-  // Herstel handmatig gekozen speler (bijv. na schermvergrendeling), anders uitbeurt
-  const savedSpeler=g._selectedSpelerId&&getSeatOrder(g).includes(+g._selectedSpelerId)?String(g._selectedSpelerId):String(uitId||'');
-  spelSelect.value=savedSpeler;
+  // Verplicht: speler = uitbeurt (auto-invullen, niet aanpasbaar)
+  if(spelvorm==='verplicht'){
+    spelSelect.value=String(uitId||'');
+    spelSelect.disabled=true;
+    const spelerLabel=document.getElementById('speler-label');
+    if(spelerLabel) spelerLabel.textContent='🧑 Speler (= uitbeurt, verplicht)';
+  } else {
+    spelSelect.disabled=false;
+    // Herstel handmatig gekozen speler (bijv. na schermvergrendeling), anders uitbeurt
+    const savedSpeler=g._selectedSpelerId&&getSeatOrder(g).includes(+g._selectedSpelerId)?String(g._selectedSpelerId):String(uitId||'');
+    spelSelect.value=savedSpeler;
+    const spelerLabel=document.getElementById('speler-label');
+    if(spelerLabel) spelerLabel.textContent=spelvorm==='bieden'?'🧑 Wie biedt er?':'🧑 Wie speelt er?';
+  }
   // Bijhouden als gebruiker handmatig kiest
   spelSelect.onchange=function(){if(current) current._selectedSpelerId=this.value?+this.value:null;};
+  // Bod-rij tonen bij bieden
+  const bodRow=document.getElementById('bod-row');
+  if(bodRow) bodRow.style.display=spelvorm==='bieden'?'block':'none';
 
   // Wissel bar altijd tonen
   const wisselBar=document.getElementById('wissel-bar');
@@ -1733,6 +1770,15 @@ function getAutoNatSpecial(g,ronde){
   if(!g||!ronde) return '';
   const makerId=ronde.spelId||ronde.spelWij||ronde.spelZij||null;
   const makerTeam=getTeamForPlayer(g,makerId);
+  // Bieden: nat als kaartpunten (zonder roem) < bod
+  if((g.spelvorm||'traditioneel')==='bieden'){
+    if(!ronde.bod) return '';
+    const makerKaart=makerTeam==='wij'?(parseInt(ronde.w)||0):(parseInt(ronde.z)||0);
+    if(makerTeam==='wij'&&makerKaart<ronde.bod) return 'NAT WIJ (auto)';
+    if(makerTeam==='zij'&&makerKaart<ronde.bod) return 'NAT ZIJ (auto)';
+    return '';
+  }
+  // Traditioneel / Verplicht: nat als totaal (kaart+roem) <= tegenstander
   const totaalWij=(parseInt(ronde.w)||0)+(parseInt(ronde.rw)||0);
   const totaalZij=(parseInt(ronde.z)||0)+(parseInt(ronde.rz)||0);
   if(makerTeam==='wij' && totaalWij<=totaalZij) return 'NAT WIJ (auto)';
@@ -1776,6 +1822,16 @@ function getRoundAward(g,ronde){
   }
   if(special.includes('PIT ZIJ')){
     return {w:0,z:z+rw+rz,roemWij:0,roemZij:rw+rz};
+  }
+  // Bieden: bod-bonus toevoegen aan spelende partij als bod behaald
+  if((g?.spelvorm||'traditioneel')==='bieden'&&ronde.bod){
+    const makerId=ronde.spelId||ronde.spelWij||ronde.spelZij;
+    const makerTeam=getTeamForPlayer(g,makerId);
+    const makerKaart=makerTeam==='wij'?w:z;
+    if(makerKaart>=ronde.bod){
+      if(makerTeam==='wij') return {w:w+rw+ronde.bod,z:z+rz,roemWij:rw,roemZij:rz};
+      else return {w:w+rw,z:z+rz+ronde.bod,roemWij:rw,roemZij:rz};
+    }
   }
   return {w:w+rw,z:z+rz,roemWij:rw,roemZij:rz};
 }
@@ -1931,8 +1987,14 @@ function submitRound(){
   delete inputWijEl.dataset.special;
   delete inputWijEl.dataset.natTeam;
 
-  const spelId=document.getElementById('sel-speler').value||null;
+  const spelvorm=g.spelvorm||'traditioneel';
+  // Verplicht: speler = uitbeurt (auto)
+  let spelId=document.getElementById('sel-speler').value||null;
+  if(spelvorm==='verplicht') spelId=String(getUitbeurt(g.rounds.length)||'');
   if(!spelId) return showToast('Selecteer eerst wie speelt',true);
+  // Bieden: bod valideren
+  const bod=spelvorm==='bieden'?(parseInt(document.getElementById('input-bod')?.value)||0):0;
+  if(spelvorm==='bieden'&&bod<1) return showToast('Voer een geldig bod in (minimaal 1)',true);
   const spelTeam=getTeamForPlayer(g,spelId);
   const spelWij=spelTeam==='wij'?spelId:null;
   const spelZij=spelTeam==='zij'?spelId:null;
@@ -1947,7 +2009,7 @@ function submitRound(){
   const uitId=getUitbeurt(g.rounds.length);
   const verzPlayerId=special.includes('VERZ')&&_pendingVerzPlayerId?_pendingVerzPlayerId:null;
   _pendingVerzPlayerId=null;
-  const rondeData={w:fw,z:fz,rw,rz,special:'',spelId,spelWij,spelZij,uitId,verzPlayerId};
+  const rondeData={w:fw,z:fz,rw,rz,special:'',spelId,spelWij,spelZij,uitId,verzPlayerId,...(bod?{bod}:{})};
   rondeData.special=special||getAutoNatSpecial(g,rondeData);
   const autoNat=rondeData.special.includes('(auto)')?rondeData.special:'';
   if(autoNat) showNatFX();
@@ -1963,9 +2025,17 @@ function submitRound(){
   }
   saveActiveGame(); // alleen actief spel (~3-5 KB), niet de volledige geschiedenis
 
-  ['input-wij','input-zij','input-roem-wij','input-roem-zij'].forEach(id=>document.getElementById(id).value='');
+  ['input-wij','input-zij','input-roem-wij','input-roem-zij','input-bod'].forEach(id=>{const el=document.getElementById(id);if(el) el.value='';});
   document.getElementById('sel-speler').value='';
   if(g) g._selectedSpelerId=null; // handmatige keuze wissen na submitRound
+
+  // Bieden: spel stopt bij 1500 punten (voor de 16-ronden check)
+  if((g.spelvorm||'traditioneel')==='bieden'&&(g.scoreWij>=1500||g.scoreZij>=1500)){
+    const winner=g.scoreWij>=1500?'Wij':'Zij';
+    showToast(`🎉 ${winner} heeft 1500 punten bereikt!`);
+    setTimeout(()=>confirmEndGame(),700);
+    return;
+  }
 
   if(g.rounds.length>=16){
     showToast('🌳 Boom vol! 16 blaadjes gespeeld');
@@ -2315,6 +2385,7 @@ function renderHistory(){
     const scoreZ=g.active?g.scoreZij:g.finalZij;
     const won=scoreW>scoreZ,draw=scoreW===scoreZ;
     const boomTag=g.active?'🔴':g.completed?'🌳':'🌿';
+    const spelvormBadge=(g.spelvorm&&g.spelvorm!=='traditioneel')?`<span style="font-size:10px;background:rgba(201,168,76,.2);color:var(--gold);border-radius:8px;padding:1px 7px;margin-left:4px">${g.spelvorm==='verplicht'?'❗ Verplicht':g.spelvorm==='bieden'?'💰 Bieden':''}</span>`:'';
     const winnerName=won?getGameTeamNames(g,'wij'):getGameTeamNames(g,'zij');
     const statusTag=g.active
       ?`<span class="tag" style="background:rgba(39,174,96,.2);color:#2ecc71">Bezig</span>`
@@ -2323,7 +2394,7 @@ function renderHistory(){
     return `<div class="game-tile">
       <div class="game-tile-header" style="flex-direction:column;align-items:flex-start;gap:5px">
         <div style="display:flex;justify-content:space-between;align-items:center;width:100%">
-          <span class="game-date">${d} · ${g.rounds.length} blaadjes ${boomTag}${gameDur?' · ⏱'+gameDur:''}</span>
+          <span class="game-date">${d} · ${g.rounds.length} blaadjes ${boomTag}${gameDur?' · ⏱'+gameDur:''}${spelvormBadge}</span>
         </div>
         <div>${statusTag}</div>
       </div>
@@ -3979,6 +4050,7 @@ Object.assign(window,{
   updateStarterOptions,
   populateSelects,
   openNewGameModal,
+  setSpelvorm,
   startNewGame,
   openTable,
   resumeLastGame,
