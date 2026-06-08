@@ -1,30 +1,416 @@
 import { ConvexClient } from "convex/browser";
 import { api as _api } from "../convex/_generated/api";
+// _api.auth, _api.groups, _api.data zijn beschikbaar na Convex deploy
 
 // ══════════════════════════════════════════
-//  TOEGANGSCODE
+//  AUTH & GROEPEN STATE
 // ══════════════════════════════════════════
-const ACCESS_CODE='klaverbassie';
-function checkAccessCode(){
-  const val=(document.getElementById('access-input')?.value||'').trim().toLowerCase();
-  if(val===ACCESS_CODE){
-    localStorage.setItem('kj_access','1');
-    document.getElementById('access-gate').style.display='none';
+let _userId=null;
+let _userName=null;
+let _userIsAdmin=false;
+let _activeGroupId=null;
+let _activeGroupName=null;
+let _unsubData=null;
+let _authMode='login'; // 'login' | 'register'
+
+function _loadSession(){
+  try{const s=JSON.parse(localStorage.getItem('kj_session')||'null');if(s?.userId){_userId=s.userId;_userName=s.name;_userIsAdmin=s.isAdmin||false;}}catch{}
+  try{const g=JSON.parse(localStorage.getItem('kj_active_group')||'null');if(g?.id){_activeGroupId=g.id;_activeGroupName=g.name;}}catch{}
+}
+
+function _saveSession(userId,name,isAdmin){
+  _userId=userId;_userName=name;_userIsAdmin=isAdmin||false;
+  localStorage.setItem('kj_session',JSON.stringify({userId,name,isAdmin}));
+  // Toon admin-knop indien van toepassing
+  const btn=document.getElementById('btn-admin');
+  if(btn) btn.style.display=isAdmin?'inline-flex':'none';
+}
+
+function _clearSession(){
+  _userId=null;_userName=null;_userIsAdmin=false;_activeGroupId=null;_activeGroupName=null;
+  localStorage.removeItem('kj_session');
+  localStorage.removeItem('kj_active_group');
+  if(_unsubData){_unsubData();_unsubData=null;}
+}
+
+// ── Auth scherm ───────────────────────────
+function authTab(tab){
+  _authMode=tab;
+  const btnLogin=document.getElementById('auth-tab-login');
+  const btnReg=document.getElementById('auth-tab-register');
+  const submitBtn=document.getElementById('auth-submit-btn');
+  const note=document.getElementById('auth-register-note');
+  const claim=document.getElementById('auth-claim-section');
+  if(tab==='login'){
+    btnLogin.style.background='var(--gold)';btnLogin.style.color='var(--green)';
+    btnReg.style.background='none';btnReg.style.color='rgba(245,240,232,.6)';
+    submitBtn.textContent='Inloggen →';
+    if(note) note.style.display='none';
+    if(claim) claim.style.display='none';
   } else {
-    document.getElementById('access-error').style.display='block';
-    document.getElementById('access-input').value='';
-    document.getElementById('access-input').focus();
+    btnReg.style.background='var(--gold)';btnReg.style.color='var(--green)';
+    btnLogin.style.background='none';btnLogin.style.color='rgba(245,240,232,.6)';
+    submitBtn.textContent='Account aanmaken →';
+    if(note) note.style.display='block';
+    if(claim) claim.style.display='block';
+    _loadClaimOptions();
+  }
+  document.getElementById('auth-error').style.display='none';
+}
+
+async function _loadClaimOptions(){
+  // Haal bestaande spelers op uit Klaverbassie groep voor koppeling
+  if(!_client) return;
+  try{
+    // Klaverbassie groep ID ophalen
+    const kgRow=await _client.query(_api.data.getData,{groupId:undefined});
+    // We doen dit via een directe query op de shared tabel — gebruik migratieresultaat
+    // Simpeler: laad via getData zonder groupId niet mogelijk, skip voor nu
+  }catch{}
+}
+
+async function doAuth(){
+  const name=(document.getElementById('auth-name')?.value||'').trim();
+  const pin=(document.getElementById('auth-pin')?.value||'').trim();
+  const errEl=document.getElementById('auth-error');
+  errEl.style.display='none';
+  if(!name||!pin){errEl.textContent='Vul naam en PIN in';errEl.style.display='block';return;}
+  const btn=document.getElementById('auth-submit-btn');
+  btn.disabled=true;btn.textContent='Even geduld...';
+  try{
+    let result;
+    if(_authMode==='login'){
+      result=await _client.mutation(_api.auth.login,{name,pin});
+    } else {
+      result=await _client.mutation(_api.auth.register,{name,pin});
+    }
+    _saveSession(result.userId,result.name,result.isAdmin);
+    document.getElementById('screen-auth').style.display='none';
+    _showGroupsScreen();
+  }catch(e){
+    errEl.textContent=e.message||'Er ging iets mis';
+    errEl.style.display='block';
+  }finally{
+    btn.disabled=false;
+    btn.textContent=_authMode==='login'?'Inloggen →':'Account aanmaken →';
   }
 }
-(function initAccessGate(){
-  const gate=document.getElementById('access-gate');
-  if(!gate) return;
-  if(localStorage.getItem('kj_access')==='1'){
-    gate.style.display='none';
-  } else {
-    gate.style.display='flex';
-    setTimeout(()=>document.getElementById('access-input')?.focus(),100);
+
+function doLogout(){
+  _clearSession();
+  // Reset UI
+  players=[];games=[];current=null;tournaments=[];
+  document.getElementById('screen-groups').style.display='none';
+  document.getElementById('screen-auth').style.display='flex';
+  document.getElementById('header-group-btn').style.display='none';
+  const btn=document.getElementById('btn-admin');
+  if(btn) btn.style.display='none';
+  setTimeout(()=>document.getElementById('auth-name')?.focus(),100);
+}
+
+// ── Groepen scherm ────────────────────────
+async function _showGroupsScreen(){
+  if(!_userId||!_client) return;
+  document.getElementById('screen-groups').style.display='block';
+  document.getElementById('groups-username').textContent='Hoi '+_userName+'!';
+  await _refreshGroupsList();
+}
+
+async function _refreshGroupsList(){
+  const el=document.getElementById('groups-list');
+  if(!el) return;
+  el.innerHTML='<div style="text-align:center;padding:20px;color:rgba(245,240,232,.4);font-size:13px">Laden...</div>';
+  try{
+    const groups=await _client.query(_api.groups.getMyGroups,{userId:_userId});
+    if(!groups.length){
+      el.innerHTML=`<div style="text-align:center;padding:24px;color:rgba(245,240,232,.4);font-size:13px">
+        <div style="font-size:32px;margin-bottom:8px">🃏</div>
+        <div>Je bent nog geen lid van een groep.</div>
+        <div style="margin-top:4px">Join een groep of maak een nieuwe aan.</div>
+      </div>`;
+      return;
+    }
+    el.innerHTML=groups.map(g=>{
+      const img=g.imageUrl?`<img src="${g.imageUrl}" style="width:100%;height:100%;object-fit:cover;border-radius:12px">`
+        :`<div style="font-size:28px">${g.name[0].toUpperCase()}</div>`;
+      return `<div onclick="_enterGroup('${g._id}','${g.name.replace(/'/g,"\\'")}');"
+        style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.06);
+        border:1px solid rgba(201,168,76,.2);border-radius:14px;padding:14px 16px;margin-bottom:10px;cursor:pointer;
+        transition:all .18s;active:transform:scale(.98)">
+        <div style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,rgba(201,168,76,.3),rgba(45,122,79,.4));
+          display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;
+          font-size:22px;font-weight:900;color:var(--gold);overflow:hidden;flex-shrink:0">${img}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--cream)">${g.name}</div>
+          <div style="font-size:12px;color:rgba(245,240,232,.45);margin-top:2px">${g.memberCount} ${g.memberCount===1?'lid':'leden'}</div>
+        </div>
+        <button onclick="event.stopPropagation();openGroupSettings('${g._id}')"
+          style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);color:rgba(201,168,76,.7);
+          border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer">⚙️</button>
+      </div>`;
+    }).join('');
+  }catch(e){
+    el.innerHTML=`<div style="color:#e74c3c;font-size:13px;padding:10px">Fout: ${e.message}</div>`;
   }
+}
+
+async function _enterGroup(groupId,groupName){
+  _activeGroupId=groupId;_activeGroupName=groupName;
+  localStorage.setItem('kj_active_group',JSON.stringify({id:groupId,name:groupName}));
+  document.getElementById('screen-groups').style.display='none';
+  // Update header
+  const hBtn=document.getElementById('header-group-btn');
+  const hName=document.getElementById('header-group-name');
+  if(hBtn){hBtn.style.display='block';}
+  if(hName) hName.textContent=groupName;
+  // Laad data voor deze groep
+  _initMainApp();
+}
+
+function switchGroup(){
+  // Ontkoppel huidige data
+  if(_unsubData){_unsubData();_unsubData=null;}
+  players=[];games=[];current=null;tournaments=[];
+  _activeGroupId=null;_activeGroupName=null;
+  localStorage.removeItem('kj_active_group');
+  document.getElementById('header-group-btn').style.display='none';
+  _showGroupsScreen();
+}
+
+async function doJoinGroup(){
+  const code=(document.getElementById('join-group-code')?.value||'').trim();
+  const errEl=document.getElementById('join-group-error');
+  errEl.style.display='none';
+  if(!code){errEl.textContent='Voer een code in';errEl.style.display='block';return;}
+  try{
+    const groupId=await _client.mutation(_api.groups.joinGroup,{userId:_userId,joinCode:code});
+    closeModal('modal-join-group');
+    document.getElementById('join-group-code').value='';
+    showToast('✓ Groep gejoind!');
+    await _refreshGroupsList();
+  }catch(e){
+    errEl.textContent=e.message||'Fout';
+    errEl.style.display='block';
+  }
+}
+
+async function doCreateGroup(){
+  const name=(document.getElementById('create-group-name')?.value||'').trim();
+  const code=(document.getElementById('create-group-code')?.value||'').trim();
+  const errEl=document.getElementById('create-group-error');
+  errEl.style.display='none';
+  if(!name||!code){errEl.textContent='Vul naam en code in';errEl.style.display='block';return;}
+  try{
+    await _client.mutation(_api.groups.createGroup,{userId:_userId,name,joinCode:code});
+    closeModal('modal-create-group');
+    document.getElementById('create-group-name').value='';
+    document.getElementById('create-group-code').value='';
+    showToast('✓ Groep aangemaakt!');
+    await _refreshGroupsList();
+  }catch(e){
+    errEl.textContent=e.message||'Fout';
+    errEl.style.display='block';
+  }
+}
+
+async function openGroupSettings(groupId){
+  const el=document.getElementById('group-settings-content');
+  el.innerHTML='<div style="color:rgba(245,240,232,.4);font-size:13px">Laden...</div>';
+  openModal('modal-group-settings');
+  try{
+    const members=await _client.query(_api.groups.getGroupMembers,{userId:_userId,groupId});
+    const isCreatorOrAdmin=members.find(m=>m.userId===_userId&&m.isCreator)||_userIsAdmin;
+    el.innerHTML=`
+      <div class="card-label" style="margin-bottom:10px">Leden (${members.length})</div>
+      ${members.map(m=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(201,168,76,.1)">
+          <div>
+            <span style="font-size:14px;color:var(--cream)">${m.name}</span>
+            ${m.isCreator?'<span style="font-size:10px;color:var(--gold);margin-left:6px">maker</span>':''}
+          </div>
+          ${isCreatorOrAdmin&&m.userId!==_userId?`
+            <button onclick="removeMemberFromGroup('${groupId}','${m.userId}','${m.name.replace(/'/g,"\\'")}');event.stopPropagation()"
+              style="background:rgba(231,76,60,.15);border:1px solid rgba(231,76,60,.3);color:#e74c3c;border-radius:8px;font-size:11px;padding:4px 8px;cursor:pointer">
+              Verwijderen
+            </button>
+          `:''}
+        </div>`).join('')}
+      ${isCreatorOrAdmin?`
+        <div style="margin-top:16px;border-top:1px solid rgba(201,168,76,.15);padding-top:16px">
+          <div class="card-label" style="margin-bottom:10px">Groepscode</div>
+          <div id="gs-code-display" style="font-size:14px;color:var(--cream);margin-bottom:10px;background:rgba(0,0,0,.2);padding:10px;border-radius:8px;font-family:monospace"></div>
+          <input type="text" id="gs-new-code" placeholder="Nieuwe code..." maxlength="30" style="margin-bottom:6px">
+          <button class="btn btn-ghost" style="font-size:13px" onclick="saveGroupCode('${groupId}')">Code wijzigen</button>
+          <div id="gs-code-error" style="color:#e74c3c;font-size:12px;margin-top:6px;display:none"></div>
+        </div>
+        <div style="margin-top:16px">
+          <label style="font-size:12px;font-weight:600;color:rgba(245,240,232,.7);margin-bottom:6px">Groepsafbeelding</label>
+          <label style="display:block;cursor:pointer">
+            <div class="btn btn-ghost" style="font-size:13px;text-align:center">📷 Afbeelding kiezen</div>
+            <input type="file" accept="image/*" style="display:none" onchange="uploadGroupImage('${groupId}',this)">
+          </label>
+        </div>
+      `:''}`;
+    // Toon groepscode voor creator/admin
+    if(isCreatorOrAdmin){
+      // Haal code op uit getMyGroups
+      const groups=await _client.query(_api.groups.getMyGroups,{userId:_userId});
+      const g=groups.find(x=>x._id===groupId);
+      const codeEl=document.getElementById('gs-code-display');
+      if(codeEl&&g) codeEl.textContent=g.joinCode;
+    }
+  }catch(e){
+    el.innerHTML=`<div style="color:#e74c3c;font-size:13px">${e.message}</div>`;
+  }
+}
+
+async function removeMemberFromGroup(groupId,targetUserId,name){
+  doConfirm('Lid verwijderen',`Wil je ${name} uit deze groep verwijderen?`,async()=>{
+    try{
+      await _client.mutation(_api.groups.removeMember,{requesterId:_userId,targetUserId,groupId});
+      showToast('✓ '+name+' verwijderd');
+      openGroupSettings(groupId);
+    }catch(e){showToast('Fout: '+e.message,true);}
+  });
+}
+
+async function saveGroupCode(groupId){
+  const code=(document.getElementById('gs-new-code')?.value||'').trim();
+  const errEl=document.getElementById('gs-code-error');
+  errEl.style.display='none';
+  if(!code){errEl.textContent='Voer een code in';errEl.style.display='block';return;}
+  try{
+    await _client.mutation(_api.groups.updateGroup,{userId:_userId,groupId,joinCode:code});
+    document.getElementById('gs-code-display').textContent=code.toLowerCase();
+    document.getElementById('gs-new-code').value='';
+    showToast('✓ Code gewijzigd');
+  }catch(e){errEl.textContent=e.message;errEl.style.display='block';}
+}
+
+async function uploadGroupImage(groupId,input){
+  const file=input.files[0];if(!file) return;
+  showToast('📷 Bezig met uploaden...');
+  try{
+    const uploadUrl=await _client.mutation(_api.data.generateUploadUrl,{});
+    const resp=await fetch(uploadUrl,{method:'POST',headers:{'Content-Type':file.type},body:file});
+    if(!resp.ok) throw new Error('Upload mislukt');
+    const {storageId}=await resp.json();
+    await _client.mutation(_api.groups.updateGroup,{userId:_userId,groupId,imageStorageId:storageId});
+    showToast('✓ Afbeelding opgeslagen!');
+    _refreshGroupsList();
+  }catch(e){showToast('Fout: '+e.message,true);}
+}
+
+// ── Admin paneel ──────────────────────────
+async function openAdminPanel(){
+  openModal('modal-admin');
+  adminTab('groepen');
+}
+
+let _adminCurrentTab='groepen';
+async function adminTab(tab){
+  _adminCurrentTab=tab;
+  ['groepen','gebruikers'].forEach(t=>{
+    const el=document.getElementById('admin-tab-'+t);
+    if(el) el.classList.toggle('active',t===tab);
+  });
+  const el=document.getElementById('admin-content');
+  el.innerHTML='<div style="color:rgba(245,240,232,.4);font-size:13px;padding:10px 0">Laden...</div>';
+  try{
+    if(tab==='groepen'){
+      const groups=await _client.query(_api.groups.getAllGroups,{adminId:_userId});
+      el.innerHTML=groups.map(g=>`
+        <div style="background:rgba(0,0,0,.15);border-radius:10px;padding:12px;margin-bottom:10px">
+          <div style="display:flex;justify-content:space-between;align-items:flex-start">
+            <div>
+              <div style="font-size:14px;font-weight:700;color:var(--cream)">${g.name}</div>
+              <div style="font-size:11px;color:rgba(245,240,232,.4);margin-top:2px">Code: <span style="color:var(--gold);font-family:monospace">${g.joinCode}</span></div>
+              <div style="font-size:11px;color:rgba(245,240,232,.4)">${g.memberCount} leden · ${g.memberNames.join(', ')}</div>
+              ${g.archivedAt?'<div style="font-size:10px;color:#e74c3c;margin-top:2px">Gearchiveerd</div>':''}
+            </div>
+            ${!g.archivedAt?`<button onclick="adminArchiveGroup('${g._id}','${g.name.replace(/'/g,"\\'")}');"
+              style="background:rgba(231,76,60,.15);border:1px solid rgba(231,76,60,.3);color:#e74c3c;border-radius:8px;font-size:11px;padding:5px 9px;cursor:pointer">
+              Archiveren
+            </button>`:''}
+          </div>
+        </div>`).join('')||'<div style="color:rgba(245,240,232,.4);font-size:13px">Geen groepen</div>';
+    } else {
+      const users=await _client.query(_api.auth.listUsers,{adminId:_userId});
+      el.innerHTML=users.map(u=>`
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(201,168,76,.1)">
+          <div>
+            <div style="font-size:14px;color:var(--cream)">${u.name}${u.isAdmin?' 🔴':''}</div>
+            <div style="font-size:11px;color:rgba(245,240,232,.4)">${new Date(u.createdAt).toLocaleDateString('nl-NL')}</div>
+          </div>
+          ${u._id!==_userId?`<button onclick="adminResetPin('${u._id}','${u.name.replace(/'/g,"\\'")}');"
+            style="background:rgba(201,168,76,.12);border:1px solid rgba(201,168,76,.25);color:var(--gold);border-radius:8px;font-size:11px;padding:5px 9px;cursor:pointer">
+            Reset PIN
+          </button>`:''}
+        </div>`).join('');
+    }
+  }catch(e){el.innerHTML=`<div style="color:#e74c3c;font-size:13px">${e.message}</div>`;}
+}
+
+function adminArchiveGroup(groupId,name){
+  doConfirm('Groep archiveren',`Wil je de groep "${name}" archiveren? Leden kunnen er niet meer bij.`,async()=>{
+    try{
+      await _client.mutation(_api.groups.archiveGroup,{adminId:_userId,groupId});
+      showToast('✓ Groep gearchiveerd');
+      adminTab('groepen');
+    }catch(e){showToast('Fout: '+e.message,true);}
+  });
+}
+
+function adminResetPin(targetId,name){
+  const newPin=prompt(`Nieuwe PIN voor ${name}:`);
+  if(!newPin) return;
+  _client.mutation(_api.auth.resetPin,{adminId:_userId,targetId,newPin})
+    .then(()=>showToast(`✓ PIN van ${name} gereset`))
+    .catch(e=>showToast('Fout: '+e.message,true));
+}
+
+// ── App initialisatie ─────────────────────
+function _subscribeToGroupData(){
+  if(_unsubData){_unsubData();_unsubData=null;}
+  if(!_client||!_activeGroupId) return;
+  _unsubData=_client.onUpdate(_api.data.getData,{groupId:_activeGroupId},(data)=>{
+    if(!data) return;
+    if(_savePending>0){_pendingConvexData=data;return;}
+    _applyConvexData(data);
+  });
+}
+
+function _initMainApp(){
+  // Update header groep-knop
+  const hBtn=document.getElementById('header-group-btn');
+  const hName=document.getElementById('header-group-name');
+  if(hBtn) hBtn.style.display='block';
+  if(hName) hName.textContent=_activeGroupName||'Groep';
+  // Admin-knop
+  const adminBtn=document.getElementById('btn-admin');
+  if(adminBtn) adminBtn.style.display=_userIsAdmin?'inline-flex':'none';
+  // Zorg dat migratie gedaan is (eenmalig bij eerste deploy)
+  if(_client) _client.mutation(_api.groups.ensureMigration,{}).catch(()=>{});
+  // Abonneer op groepsdata
+  _subscribeToGroupData();
+}
+
+// ── Startup ───────────────────────────────
+(function initApp(){
+  _loadSession();
+  if(!_userId){
+    document.getElementById('screen-auth').style.display='flex';
+    setTimeout(()=>document.getElementById('auth-name')?.focus(),100);
+    return;
+  }
+  if(!_activeGroupId){
+    _showGroupsScreen();
+    return;
+  }
+  _initMainApp();
+  // Toon admin knop direct als sessie al admin is
+  const adminBtn=document.getElementById('btn-admin');
+  if(adminBtn) adminBtn.style.display=_userIsAdmin?'inline-flex':'none';
 })();
 
 // ══════════════════════════════════════════
@@ -94,18 +480,18 @@ async function _doSaveAll(){
     const ops=[];
     if(toSave.includes('players')){
       const pCloud=players.map(({photo,...p})=>p); // foto's niet naar Convex
-      ops.push(_client.mutation(_api.data.saveData,{key:'kj_players',value:JSON.stringify(pCloud)}));
+      ops.push(_client.mutation(_api.data.saveData,{key:'kj_players',value:JSON.stringify(pCloud),groupId:_activeGroupId}));
     }
     if(toSave.includes('games_active')){
       const active=games.filter(g=>g.active);
-      ops.push(_client.mutation(_api.data.saveData,{key:'kj_games_active',value:JSON.stringify(active)}));
+      ops.push(_client.mutation(_api.data.saveData,{key:'kj_games_active',value:JSON.stringify(active),groupId:_activeGroupId}));
     }
     if(toSave.includes('games_history')){
       const history=games.filter(g=>!g.active);
-      ops.push(_client.mutation(_api.data.saveData,{key:'kj_games_history',value:JSON.stringify(history)}));
+      ops.push(_client.mutation(_api.data.saveData,{key:'kj_games_history',value:JSON.stringify(history),groupId:_activeGroupId}));
     }
     if(toSave.includes('tournaments'))
-      ops.push(_client.mutation(_api.data.saveData,{key:'kj_tournaments',value:JSON.stringify(tournaments)}));
+      ops.push(_client.mutation(_api.data.saveData,{key:'kj_tournaments',value:JSON.stringify(tournaments),groupId:_activeGroupId}));
     await Promise.all(ops);
     saveOk=true;
   } catch(e){ console.error('Opslaan mislukt:',e); showToast('⚠️ Opslaan mislukt, probeer opnieuw',true); }
@@ -3753,16 +4139,7 @@ function _applyConvexData(data){
   if(loader){loader.style.opacity='0';setTimeout(()=>loader.remove(),400);}
 }
 
-_client.onUpdate(_api.data.getData,{},(data)=>{
-  if(!data) return;
-  // Blokkeer overschrijven van lokale state terwijl een save in-flight is
-  // (voorkomt "replay" effect waarbij Convex oude data terugstuurt)
-  if(_savePending>0){
-    _pendingConvexData=data; // Buffer — wordt toegepast zodra save klaar is
-    return;
-  }
-  _applyConvexData(data);
-});
+// Subscriptie wordt gestart via _subscribeToGroupData() na groepsselectie
 
 
 // ══════════════════════════════════════════
@@ -4134,4 +4511,19 @@ Object.assign(window,{
   renderTournamentDetailTab,
   deleteTournament,
   toggleSound,
+  // Auth & groepen
+  authTab,
+  doAuth,
+  doLogout,
+  switchGroup,
+  doJoinGroup,
+  doCreateGroup,
+  openGroupSettings,
+  removeMemberFromGroup,
+  saveGroupCode,
+  uploadGroupImage,
+  openAdminPanel,
+  adminTab,
+  adminArchiveGroup,
+  adminResetPin,
 });

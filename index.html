@@ -251,22 +251,95 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
 </head>
 <body style="">
 
-<!-- ══ TOEGANGSCODE GATE ══ -->
-<div id="access-gate" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--green);
+<!-- ══ AUTH SCHERM ══ -->
+<div id="screen-auth" style="display:none;position:fixed;inset:0;z-index:9999;background:var(--green);
   background-image:radial-gradient(ellipse at 20% 20%,rgba(45,122,79,.5),transparent 60%);
-  display:flex;align-items:center;justify-content:center;flex-direction:column;padding:32px">
-  <div style="font-family:'Playfair Display',serif;font-size:36px;font-weight:900;color:var(--gold);margin-bottom:8px">♣ Klaverjas</div>
-  <div style="font-size:14px;color:rgba(245,240,232,.5);margin-bottom:32px">Voer de toegangscode in</div>
-  <input id="access-input" type="password" placeholder="Toegangscode..." maxlength="30"
-    style="width:100%;max-width:320px;padding:14px 16px;border-radius:12px;border:1px solid rgba(201,168,76,.4);
-    background:rgba(255,255,255,.08);color:var(--cream);font-size:16px;text-align:center;outline:none;margin-bottom:12px"
-    onkeydown="if(event.key==='Enter')checkAccessCode()">
-  <button onclick="checkAccessCode()"
-    style="width:100%;max-width:320px;padding:14px;border-radius:12px;border:none;
-    background:var(--gold);color:#163d24;font-weight:700;font-size:16px;cursor:pointer">
-    Toegang →
-  </button>
-  <div id="access-error" style="color:#e74c3c;font-size:13px;margin-top:12px;display:none">Onjuiste code. Probeer opnieuw.</div>
+  overflow-y:auto">
+  <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:32px 24px">
+    <div style="font-family:'Playfair Display',serif;font-size:38px;font-weight:900;color:var(--gold);margin-bottom:4px">♣ Klaverjas</div>
+    <div style="font-size:13px;color:rgba(245,240,232,.45);margin-bottom:32px">Bijhouden, bijleren, winnen.</div>
+
+    <!-- Tab switcher -->
+    <div style="display:flex;background:rgba(0,0,0,.25);border-radius:12px;padding:3px;margin-bottom:24px;width:100%;max-width:320px">
+      <button id="auth-tab-login" onclick="authTab('login')"
+        style="flex:1;padding:9px;border-radius:10px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;background:var(--gold);color:var(--green)">
+        Inloggen
+      </button>
+      <button id="auth-tab-register" onclick="authTab('register')"
+        style="flex:1;padding:9px;border-radius:10px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;background:none;color:rgba(245,240,232,.6)">
+        Nieuw account
+      </button>
+    </div>
+
+    <div style="width:100%;max-width:320px">
+      <label style="font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;margin-bottom:4px">Naam</label>
+      <input id="auth-name" type="text" placeholder="Jouw naam..." maxlength="30" autocomplete="username"
+        style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(201,168,76,.35);
+        background:rgba(255,255,255,.08);color:var(--cream);font-size:15px;outline:none;margin-bottom:12px;font-family:'DM Sans',sans-serif"
+        onkeydown="if(event.key==='Enter')document.getElementById('auth-pin').focus()">
+
+      <label style="font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;margin-bottom:4px">PIN of wachtwoord</label>
+      <input id="auth-pin" type="password" placeholder="Kies zelf wat je gebruikt..." maxlength="50" autocomplete="current-password"
+        style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(201,168,76,.35);
+        background:rgba(255,255,255,.08);color:var(--cream);font-size:15px;outline:none;margin-bottom:6px;font-family:'DM Sans',sans-serif"
+        onkeydown="if(event.key==='Enter')doAuth()">
+
+      <div id="auth-error" style="color:#e74c3c;font-size:13px;margin-bottom:12px;display:none"></div>
+
+      <button id="auth-submit-btn" onclick="doAuth()"
+        style="width:100%;padding:14px;border-radius:12px;border:none;
+        background:linear-gradient(135deg,var(--gold),var(--gold-light));color:#163d24;font-weight:700;font-size:15px;
+        cursor:pointer;font-family:'DM Sans',sans-serif;margin-bottom:12px">
+        Inloggen →
+      </button>
+
+      <div id="auth-register-note" style="display:none;font-size:12px;color:rgba(245,240,232,.45);text-align:center;line-height:1.5">
+        Je kiest zelf een PIN of wachtwoord — onthoud het goed, want er is geen herstel zonder admin.
+      </div>
+
+      <!-- Bestaande speler koppelen (alleen bij registratie) -->
+      <div id="auth-claim-section" style="display:none;margin-top:16px;border-top:1px solid rgba(201,168,76,.2);padding-top:16px">
+        <div style="font-size:12px;color:rgba(245,240,232,.5);margin-bottom:8px">Zit je al in Klaverbassie? Koppel dan je bestaande profiel:</div>
+        <select id="auth-claim-select"
+          style="width:100%;padding:11px 13px;background:rgba(0,0,0,.25);border:1.5px solid rgba(201,168,76,.3);
+          border-radius:10px;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;margin-bottom:0">
+          <option value="">— Geen, ik ben nieuw —</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GROEPEN SCHERM ══ -->
+<div id="screen-groups" style="display:none;position:fixed;inset:0;z-index:9998;background:var(--green);
+  background-image:radial-gradient(ellipse at 20% 20%,rgba(45,122,79,.5),transparent 60%);
+  overflow-y:auto">
+  <div style="padding:calc(20px + env(safe-area-inset-top,0px)) 20px 32px">
+    <!-- Header -->
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+      <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:var(--gold)">Mijn groepen</div>
+      <button onclick="doLogout()" style="background:none;border:none;color:rgba(245,240,232,.4);font-size:12px;cursor:pointer;padding:6px 0">Uitloggen</button>
+    </div>
+    <div id="groups-username" style="font-size:13px;color:rgba(245,240,232,.5);margin-bottom:24px"></div>
+
+    <!-- Groepen lijst -->
+    <div id="groups-list" style="margin-bottom:20px"></div>
+
+    <!-- Actie knoppen -->
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <button onclick="openModal('modal-join-group')"
+        style="width:100%;padding:13px;border-radius:12px;border:1.5px solid rgba(201,168,76,.35);
+        background:rgba(201,168,76,.08);color:var(--gold);font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer">
+        🔑 Groep joinen via code
+      </button>
+      <button onclick="openModal('modal-create-group')"
+        style="width:100%;padding:13px;border-radius:12px;border:none;
+        background:linear-gradient(135deg,var(--gold),var(--gold-light));color:var(--green);
+        font-family:'DM Sans',sans-serif;font-size:14px;font-weight:700;cursor:pointer">
+        ➕ Nieuwe groep aanmaken
+      </button>
+    </div>
+  </div>
 </div>
 
 <!-- ══ LAADSCHERM ══ -->
@@ -285,8 +358,17 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
 </div>
 
 <div class="header">
-  <div class="logo">♣ <span>Klaverjas</span></div>
-  <button id="btn-sound-toggle" onclick="toggleSound()" style="background:none;border:none;cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7" title="Geluid aan/uit">🔔</button>
+  <div style="display:flex;flex-direction:column;gap:2px">
+    <div class="logo">♣ <span>Klaverjas</span></div>
+    <button id="header-group-btn" onclick="switchGroup()" style="background:none;border:none;cursor:pointer;text-align:left;padding:0;display:none">
+      <span id="header-group-name" style="font-size:11px;color:rgba(201,168,76,.7);font-weight:600">—</span>
+      <span style="font-size:10px;color:rgba(245,240,232,.3);margin-left:4px">wisselen ›</span>
+    </button>
+  </div>
+  <div style="display:flex;align-items:center;gap:6px">
+    <button id="btn-admin" onclick="openAdminPanel()" style="display:none;background:rgba(231,76,60,.15);border:1px solid rgba(231,76,60,.3);color:#e74c3c;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;padding:5px 9px">Admin</button>
+    <button id="btn-sound-toggle" onclick="toggleSound()" style="background:none;border:none;cursor:pointer;font-size:18px;padding:4px 8px;opacity:.7" title="Geluid aan/uit">🔔</button>
+  </div>
 </div>
 
 <!-- ═══ HOME ═══ -->
@@ -678,6 +760,49 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
   <button class="nav-btn" id="nav-stats" onclick="switchView(&#39;stats&#39;)"><div class="nav-icon">📊</div>Stats</button>
   <button class="nav-btn" id="nav-history" onclick="switchView('history')"><div class="nav-icon">📋</div>Hist.</button>
   <button class="nav-btn" id="nav-toernooi" onclick="switchView('toernooi')"><div class="nav-icon">🏆</div>Toer.</button>
+</div>
+
+<!-- ══ GROEPEN MODALS ══ -->
+<div class="modal-overlay" id="modal-join-group">
+  <div class="modal">
+    <div class="modal-title">🔑 Groep joinen <span class="modal-close" onclick="closeModal('modal-join-group')">✕</span></div>
+    <label>Groepscode</label>
+    <input type="text" id="join-group-code" placeholder="Voer de code in..." maxlength="30"
+      onkeydown="if(event.key==='Enter')doJoinGroup()">
+    <div id="join-group-error" style="color:#e74c3c;font-size:13px;margin-bottom:10px;display:none"></div>
+    <button class="btn btn-gold" onclick="doJoinGroup()">Joinen →</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-create-group">
+  <div class="modal">
+    <div class="modal-title">➕ Groep aanmaken <span class="modal-close" onclick="closeModal('modal-create-group')">✕</span></div>
+    <label>Groepsnaam</label>
+    <input type="text" id="create-group-name" placeholder="bijv. Klaverbassie" maxlength="40">
+    <label>Groepscode (anderen gebruiken dit om te joinen)</label>
+    <input type="text" id="create-group-code" placeholder="bijv. klaverbassie2025" maxlength="30"
+      onkeydown="if(event.key==='Enter')doCreateGroup()">
+    <div id="create-group-error" style="color:#e74c3c;font-size:13px;margin-bottom:10px;display:none"></div>
+    <button class="btn btn-gold" onclick="doCreateGroup()">Groep aanmaken</button>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-group-settings">
+  <div class="modal">
+    <div class="modal-title" id="group-settings-title">⚙️ Groep <span class="modal-close" onclick="closeModal('modal-group-settings')">✕</span></div>
+    <div id="group-settings-content"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal-admin">
+  <div class="modal">
+    <div class="modal-title">🔴 Admin <span class="modal-close" onclick="closeModal('modal-admin')">✕</span></div>
+    <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+      <button class="filter-chip active" onclick="adminTab('groepen')" id="admin-tab-groepen">Groepen</button>
+      <button class="filter-chip" onclick="adminTab('gebruikers')" id="admin-tab-gebruikers">Gebruikers</button>
+    </div>
+    <div id="admin-content"></div>
+  </div>
 </div>
 
 <!-- MODALS -->

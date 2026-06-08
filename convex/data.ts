@@ -1,21 +1,28 @@
 import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 
-// Haal alle gedeelde data op (players, games, current)
-// Foto-URLs worden opgelost via Convex File Storage en meegestuurd als kj_photo_urls
+// Haal alle gedeelde data op voor een specifieke groep
 export const getData = query({
-  args: {},
-  handler: async (ctx) => {
+  args: { groupId: v.optional(v.id("groups")) },
+  handler: async (ctx, { groupId }) => {
+    if (!groupId) return {};
+
+    const prefix = groupId + ":";
     const rows = await ctx.db.query("shared").collect();
     const result: Record<string, unknown> = {};
+
     for (const row of rows) {
-      try {
-        result[row.key] = JSON.parse(row.value);
-      } catch {
-        result[row.key] = null;
+      if (row.key.startsWith(prefix)) {
+        const shortKey = row.key.slice(prefix.length);
+        try {
+          result[shortKey] = JSON.parse(row.value);
+        } catch {
+          result[shortKey] = null;
+        }
       }
     }
-    // Resolve photo URLs for players with a photoId (Convex File Storage)
+
+    // Resolve foto-URLs via Convex File Storage
     const players = (result["kj_players"] as { id: number; photoId?: string }[]) ?? [];
     const photoUrls: Record<string, string | null> = {};
     for (const p of players) {
@@ -24,22 +31,28 @@ export const getData = query({
       }
     }
     result["kj_photo_urls"] = photoUrls;
+
     return result;
   },
 });
 
-// Sla een waarde op (aanmaken of bijwerken)
+// Sla een waarde op voor een specifieke groep
 export const saveData = mutation({
-  args: { key: v.string(), value: v.string() },
-  handler: async (ctx, { key, value }) => {
+  args: {
+    key: v.string(),
+    value: v.string(),
+    groupId: v.optional(v.id("groups")),
+  },
+  handler: async (ctx, { key, value, groupId }) => {
+    const fullKey = groupId ? `${groupId}:${key}` : key;
     const existing = await ctx.db
       .query("shared")
-      .withIndex("by_key", (q) => q.eq("key", key))
+      .withIndex("by_key", (q) => q.eq("key", fullKey))
       .first();
     if (existing) {
       await ctx.db.patch(existing._id, { value });
     } else {
-      await ctx.db.insert("shared", { key, value });
+      await ctx.db.insert("shared", { key: fullKey, value });
     }
   },
 });
@@ -52,7 +65,7 @@ export const generateUploadUrl = mutation({
   },
 });
 
-// Verwijder een foto uit Convex File Storage (bij nieuwe upload of speler verwijderen)
+// Verwijder een foto uit Convex File Storage
 export const deletePhoto = mutation({
   args: { storageId: v.string() },
   handler: async (ctx, { storageId }) => {
