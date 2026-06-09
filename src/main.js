@@ -14,6 +14,7 @@ let _unsubData=null;
 let _authMode='login'; // 'login' | 'register'
 let _statsScope='group'; // 'group' | 'global'
 let _globalPlayers=null;
+let _globalTypeStats=null; // {spelvorm: count}
 
 function _loadSession(){
   try{const s=JSON.parse(localStorage.getItem('kj_session')||'null');if(s?.userId){_userId=s.userId;_userName=s.name;_userIsAdmin=s.isAdmin||false;}}catch{}
@@ -110,7 +111,7 @@ window.doAuth=doAuth;
 function doLogout(){
   _clearSession();
   players=[];games=[];current=null;tournaments=[];
-  _statsScope='group';_globalPlayers=null;
+  _statsScope='group';_globalPlayers=null;_globalTypeStats=null;
   document.getElementById('screen-groups').style.display='none';
   document.getElementById('screen-auth').style.display='flex';
   document.getElementById('header-group-btn').style.display='none';
@@ -2836,7 +2837,11 @@ function renderHistory(){
     const scoreZ=g.active?g.scoreZij:g.finalZij;
     const won=scoreW>scoreZ,draw=scoreW===scoreZ;
     const boomTag=g.active?'🔴':g.completed?'🌳':'🌿';
-    const spelvormBadge=(g.spelvorm&&g.spelvorm!=='traditioneel')?`<span style="font-size:10px;background:rgba(201,168,76,.2);color:var(--gold);border-radius:8px;padding:1px 7px;margin-left:4px">${g.spelvorm==='verplicht'?'❗ Verplicht':g.spelvorm==='bieden'?'💰 Bieden':''}</span>`:'';
+    const sv=g.spelvorm||'traditioneel';
+    const svLabel=sv==='verplicht'?'❗ Verplicht':sv==='bieden'?'💰 Bieden':'🎯 Traditioneel';
+    const svColor=sv==='traditioneel'?'rgba(245,240,232,.15)':'rgba(201,168,76,.2)';
+    const svTextColor=sv==='traditioneel'?'rgba(245,240,232,.4)':'var(--gold)';
+    const spelvormBadge=`<span style="font-size:10px;background:${svColor};color:${svTextColor};border-radius:8px;padding:1px 7px;margin-left:4px">${svLabel}</span>`;
     const winnerName=won?getGameTeamNames(g,'wij'):getGameTeamNames(g,'zij');
     const statusTag=g.active
       ?`<span class="tag" style="background:rgba(39,174,96,.2);color:#2ecc71">Bezig</span>`
@@ -3171,7 +3176,7 @@ function _renderStatsUI(isGlobal){
 
 async function toggleGlobalStats(){
   if(_statsScope==='global'){
-    _statsScope='group';_globalPlayers=null;
+    _statsScope='group';_globalPlayers=null;_globalTypeStats=null;_globalTypeStats=null;
     renderStats();
     return;
   }
@@ -3180,9 +3185,11 @@ async function toggleGlobalStats(){
   try{
     const groups=await _client.query(_api.groups.getMyGroups,{userId:_userId});
     const merged={};
+    const typeStats={};
     for(const g of groups){
       const data=await _client.query(_api.data.getData,{groupId:g._id});
       const gPlayers=data.kj_players||[];
+      const gGames=[...(data.kj_games_active||[]),(data.kj_games_history||[])].flat().filter(g=>!g.deletedAt);
       for(const p of gPlayers){
         if(!p.name) continue;
         if(!merged[p.name]) merged[p.name]={...p,games:0,wins:0,losses:0,draws:0,totalCardScore:0,totalRoemScore:0};
@@ -3191,8 +3198,13 @@ async function toggleGlobalStats(){
         m.totalCardScore+=(p.totalCardScore||0);m.totalRoemScore+=(p.totalRoemScore||0);
         if(p.photo&&!m.photo) m.photo=p.photo;
       }
+      for(const game of gGames){
+        const sv=game.spelvorm||'traditioneel';
+        typeStats[sv]=(typeStats[sv]||0)+1;
+      }
     }
     _globalPlayers=Object.values(merged);
+    _globalTypeStats=typeStats;
     _statsScope='global';
   }catch(e){
     showToast('Kon globale data niet laden');
@@ -3206,12 +3218,47 @@ function setStatsFilter(f){statsFilter=f;renderStats()}
 
 function renderStatsContent(){
   const el=document.getElementById('stats-content');
+  // Globale modus: alleen spelers + spelsoort-overzicht
+  if(_statsScope==='global'&&_globalPlayers){
+    el.innerHTML=renderSpelersLeaderboard()+renderSpelsoortCard(_globalTypeStats||{},true);
+    return;
+  }
   if(!games.length){el.innerHTML=`<div class="empty"><div class="empty-icon">📊</div><div class="empty-text">Nog geen statistieken</div><div class="empty-sub">Speel eerst een paar bomen!</div></div>`;return}
   if(statsFilter==='spelers') el.innerHTML=renderSpelersLeaderboard();
   else if(statsFilter==='algemeen') el.innerHTML=renderAlgemeenStats();
   else if(statsFilter==='duo') el.innerHTML=renderDuoStats();
   else if(statsFilter==='tegenstanders') el.innerHTML=renderTegStats();
   else if(statsFilter==='records') el.innerHTML=renderRecordsStats();
+}
+
+function renderSpelsoortCard(typeMap, isGlobal=false){
+  const svCfg=[
+    {key:'traditioneel',icon:'🎯',label:'Traditioneel'},
+    {key:'verplicht',   icon:'❗',label:'Verplicht'},
+    {key:'bieden',      icon:'💰',label:'Bieden'},
+  ];
+  const total=Object.values(typeMap).reduce((s,n)=>s+n,0)||1;
+  const rows=svCfg.map(c=>{
+    const n=typeMap[c.key]||0;
+    const pct=Math.round(n/total*100);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid rgba(245,240,232,.06)">
+      <span style="font-size:15px;width:22px;text-align:center">${c.icon}</span>
+      <div style="flex:1">
+        <div style="display:flex;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:13px;font-weight:600">${c.label}</span>
+          <span style="font-size:13px;font-weight:700;color:var(--gold)">${n}</span>
+        </div>
+        <div style="height:4px;background:rgba(245,240,232,.08);border-radius:2px">
+          <div style="height:100%;width:${pct}%;background:var(--gold);border-radius:2px;transition:width .3s"></div>
+        </div>
+      </div>
+      <span style="font-size:11px;color:rgba(245,240,232,.35);width:30px;text-align:right">${pct}%</span>
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    <div class="card-label">${isGlobal?'🌐 Spelsoort — alle groepen':'🎮 Bomen per spelsoort'}</div>
+    ${rows}
+  </div>`;
 }
 
 function renderAlgemeenStats(){
@@ -3254,6 +3301,7 @@ function renderAlgemeenStats(){
         <div class="stat-box" onclick="openSpecialsDetail('kaap')" style="cursor:pointer"><div class="stat-value" style="color:var(--gold)">${players.reduce((s,p)=>s+(p.roundsKaap||0),0)}</div><div class="stat-label">🦅 Gekaapt</div></div>
       </div>
     </div>
+    ${renderSpelsoortCard(activeGames.reduce((acc,g)=>{const sv=g.spelvorm||'traditioneel';acc[sv]=(acc[sv]||0)+1;return acc;},{}))}
     `;
 }
 
@@ -4273,6 +4321,10 @@ function _applyConvexData(data){
     current = fromConvex;
   }
   if(_localGamePending && !current) _localGamePending = null;
+  // Migratie: markeer bomen zonder spelvorm als 'traditioneel'
+  let spelMigratie=false;
+  games.forEach(g=>{if(!g.spelvorm){g.spelvorm='traditioneel';spelMigratie=true;}});
+  if(spelMigratie) saveAll();
   _convexReady = true;
   _autoCloseStaleGames(); // sluit vergeten bomen automatisch na 6 uur
   recalcPlayerStats(); // altijd stats bijwerken na Convex-update
