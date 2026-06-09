@@ -477,16 +477,25 @@ if (!_convexUrl) {
 
 // ── Startup ───────────────────────────────
 (function initApp(){
-  localStorage.removeItem('kj_access');
-  // Tijdelijk: altijd opnieuw inloggen (sessie niet vertrouwen totdat subscriptie stabiel is)
-  localStorage.removeItem('kj_session');
-  localStorage.removeItem('kj_active_group');
-  // Migratie altijd uitvoeren zodra client beschikbaar is (maakt Tibbush + Klaverbassie groep aan)
-  if(_client){
-    _client.mutation(_api.groups.ensureMigration,{}).catch(()=>{});
+  if(_client) _client.mutation(_api.groups.ensureMigration,{}).catch(()=>{});
+  _loadSession();
+  if(_userId && _activeGroupId){
+    // Sessie + actieve groep herstellen → direct laden
+    const btn=document.getElementById('btn-admin');
+    if(btn) btn.style.display=_userIsAdmin?'inline-flex':'none';
+    document.getElementById('header-group-name').textContent=_activeGroupName||'—';
+    document.getElementById('header-group-btn').style.display='block';
+    _initMainApp();
+  } else if(_userId){
+    // Sessie aanwezig maar nog geen groep → groepenscherm
+    const btn=document.getElementById('btn-admin');
+    if(btn) btn.style.display=_userIsAdmin?'inline-flex':'none';
+    _showGroupsScreen();
+  } else {
+    // Niet ingelogd → loginscherm
+    document.getElementById('screen-auth').style.display='flex';
+    setTimeout(()=>document.getElementById('auth-name')?.focus(),100);
   }
-  document.getElementById('screen-auth').style.display='flex';
-  setTimeout(()=>document.getElementById('auth-name')?.focus(),100);
 })();
 
 // ══════════════════════════════════════════
@@ -3150,7 +3159,12 @@ function _renderStatsUI(isGlobal){
   filterEl.innerHTML=filters.map(f=>`<div class="filter-chip ${statsFilter===f.k?'active':''}" onclick="setStatsFilter('${f.k}')">${f.l}</div>`).join('');
   // Global toggle knop
   const scopeEl=document.getElementById('stats-scope-btn');
-  if(scopeEl) scopeEl.textContent=isGlobal?'📍 Actieve groep':'🌐 Alle groepen';
+  if(scopeEl){
+    scopeEl.textContent=isGlobal?'🌐 Alle groepen':'📍 '+(_activeGroupName||'Actieve groep');
+    scopeEl.style.background=isGlobal?'rgba(52,152,219,.2)':'rgba(201,168,76,.1)';
+    scopeEl.style.borderColor=isGlobal?'rgba(52,152,219,.4)':'rgba(201,168,76,.25)';
+    scopeEl.style.color=isGlobal?'rgba(52,152,219,.9)':'rgba(201,168,76,.7)';
+  }
   if(isGlobal&&statsFilter!=='spelers') statsFilter='spelers';
   renderStatsContent();
 }
