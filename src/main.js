@@ -758,6 +758,17 @@ function showJagenToast(msg){
   _jagenTimer=setTimeout(()=>t.classList.remove('show'),4000);
 }
 
+function spelsoortBadge(spelvorm){
+  const sv=spelvorm||'traditioneel';
+  const cfg={
+    traditioneel:{icon:'🎯',label:'Traditioneel',bg:'rgba(46,204,113,.15)',color:'rgba(46,204,113,.8)'},
+    verplicht:   {icon:'❗',label:'Verplicht',   bg:'rgba(231,76,60,.15)', color:'rgba(231,76,60,.85)'},
+    bieden:      {icon:'💰',label:'Bieden',      bg:'rgba(52,152,219,.15)',color:'rgba(52,152,219,.85)'},
+  };
+  const c=cfg[sv]||cfg.traditioneel;
+  return `<span style="font-size:10px;background:${c.bg};color:${c.color};border-radius:8px;padding:1px 7px;white-space:nowrap">${c.icon} ${c.label}</span>`;
+}
+
 function formatDuration(ms){
   if(!ms||ms<0) return null;
   const mins=Math.floor(ms/60000);
@@ -2837,11 +2848,7 @@ function renderHistory(){
     const scoreZ=g.active?g.scoreZij:g.finalZij;
     const won=scoreW>scoreZ,draw=scoreW===scoreZ;
     const boomTag=g.active?'🔴':g.completed?'🌳':'🌿';
-    const sv=g.spelvorm||'traditioneel';
-    const svLabel=sv==='verplicht'?'❗ Verplicht':sv==='bieden'?'💰 Bieden':'🎯 Traditioneel';
-    const svColor=sv==='traditioneel'?'rgba(245,240,232,.15)':'rgba(201,168,76,.2)';
-    const svTextColor=sv==='traditioneel'?'rgba(245,240,232,.4)':'var(--gold)';
-    const spelvormBadge=`<span style="font-size:10px;background:${svColor};color:${svTextColor};border-radius:8px;padding:1px 7px;margin-left:4px">${svLabel}</span>`;
+    const spelvormBadge='<span style="margin-left:4px">'+spelsoortBadge(g.spelvorm)+'</span>';
     const winnerName=won?getGameTeamNames(g,'wij'):getGameTeamNames(g,'zij');
     const statusTag=g.active
       ?`<span class="tag" style="background:rgba(39,174,96,.2);color:#2ecc71">Bezig</span>`
@@ -4257,7 +4264,7 @@ function renderHome(){
     const winnerName=won?wn:zn;
     return `<div class="game-tile" onclick="openGameDetail('${g.id}')">
       <div class="game-tile-header">
-        <span class="game-date">${d} · ${g.rounds.length} blaadjes ${g.completed?'🌳':'🌿'}</span>
+        <span class="game-date">${d} · ${g.rounds.length} blaadjes ${g.completed?'🌳':'🌿'} <span style="margin-left:2px">${spelsoortBadge(g.spelvorm)}</span></span>
         ${draw?`<span class="tag tag-draw">Gelijk</span>`:won?`<span class="tag tag-win">${winnerName} gewonnen</span>`:`<span class="tag tag-loss">${winnerName} gewonnen</span>`}
       </div>
       <div style="display:flex;justify-content:space-between;align-items:center">
