@@ -248,7 +248,7 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
 /* ROUND EDIT inline */
 .round-edit-row td input{width:52px;padding:4px 6px;font-size:12px;margin:0;background:rgba(0,0,0,.4);border-radius:6px}
 </style>
-  <script type="module" crossorigin src="/assets/index-DHYkaVJW.js"></script>
+  <script type="module" crossorigin src="/assets/index-CZYndo93.js"></script>
 </head>
 <body style="">
 
@@ -259,54 +259,19 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
   <div style="width:100%;max-width:380px;display:flex;align-items:center;justify-content:center;flex-direction:column;padding:32px 24px;box-sizing:border-box">
     <div style="font-family:'Playfair Display',serif;font-size:38px;font-weight:900;color:var(--gold);margin-bottom:4px">♣ Klaverjas</div>
     <div style="font-size:13px;color:rgba(245,240,232,.45);margin-bottom:32px">Bijhouden, bijleren, winnen.</div>
-
-    <!-- Tab switcher -->
-    <div style="display:flex;background:rgba(0,0,0,.25);border-radius:12px;padding:3px;margin-bottom:24px;width:100%;max-width:320px">
-      <button id="auth-tab-login" onclick="authTab('login')"
-        style="flex:1;padding:9px;border-radius:10px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;background:var(--gold);color:var(--green)">
-        Inloggen
-      </button>
-      <button id="auth-tab-register" onclick="authTab('register')"
-        style="flex:1;padding:9px;border-radius:10px;border:none;font-family:'DM Sans',sans-serif;font-size:13px;font-weight:700;cursor:pointer;transition:all .2s;background:none;color:rgba(245,240,232,.6)">
-        Nieuw account
-      </button>
-    </div>
-
     <div style="width:100%;max-width:320px">
-      <label style="font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;margin-bottom:4px">Naam</label>
-      <input id="auth-name" type="text" placeholder="Jouw naam..." maxlength="30" autocomplete="username"
+      <label style="font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;margin-bottom:4px">Wat is je naam?</label>
+      <input id="auth-name" type="text" placeholder="Jouw naam..." maxlength="30" autocomplete="name"
         style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(201,168,76,.35);
-        background:rgba(255,255,255,.08);color:var(--cream);font-size:15px;outline:none;margin-bottom:12px;font-family:'DM Sans',sans-serif"
-        onkeydown="if(event.key==='Enter')document.getElementById('auth-pin').focus()">
-
-      <label style="font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;margin-bottom:4px">PIN of wachtwoord</label>
-      <input id="auth-pin" type="password" placeholder="Kies zelf wat je gebruikt..." maxlength="50" autocomplete="current-password"
-        style="width:100%;padding:13px 16px;border-radius:12px;border:1.5px solid rgba(201,168,76,.35);
-        background:rgba(255,255,255,.08);color:var(--cream);font-size:15px;outline:none;margin-bottom:6px;font-family:'DM Sans',sans-serif"
+        background:rgba(255,255,255,.08);color:var(--cream);font-size:15px;outline:none;margin-bottom:12px;font-family:'DM Sans',sans-serif;box-sizing:border-box"
         onkeydown="if(event.key==='Enter')doAuth()">
-
       <div id="auth-error" style="color:#e74c3c;font-size:13px;margin-bottom:12px;display:none"></div>
-
       <button id="auth-submit-btn" onclick="doAuth()"
         style="width:100%;padding:14px;border-radius:12px;border:none;
         background:linear-gradient(135deg,var(--gold),var(--gold-light));color:#163d24;font-weight:700;font-size:15px;
         cursor:pointer;font-family:'DM Sans',sans-serif;margin-bottom:12px">
-        Inloggen →
+        Doorgaan →
       </button>
-
-      <div id="auth-register-note" style="display:none;font-size:12px;color:rgba(245,240,232,.45);text-align:center;line-height:1.5">
-        Je kiest zelf een PIN of wachtwoord — onthoud het goed, want er is geen herstel zonder admin.
-      </div>
-
-      <!-- Bestaande speler koppelen (alleen bij registratie) -->
-      <div id="auth-claim-section" style="display:none;margin-top:16px;border-top:1px solid rgba(201,168,76,.2);padding-top:16px">
-        <div style="font-size:12px;color:rgba(245,240,232,.5);margin-bottom:8px">Zit je al in Klaverbassie? Koppel dan je bestaande profiel:</div>
-        <select id="auth-claim-select" onchange="const n=this.options[this.selectedIndex].text;if(this.value)document.getElementById('auth-name').value=n;"
-          style="width:100%;padding:11px 13px;background:rgba(0,0,0,.25);border:1.5px solid rgba(201,168,76,.3);
-          border-radius:10px;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;margin-bottom:0">
-          <option value="">— Geen, ik ben nieuw —</option>
-        </select>
-      </div>
     </div>
   </div>
 </div>
@@ -319,10 +284,7 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
       <div style="font-family:'Playfair Display',serif;font-size:22px;font-weight:900;color:var(--gold)">Mijn groepen</div>
-      <div style="display:flex;gap:12px;align-items:center">
-        <button onclick="openChangePinModal()" style="background:none;border:none;color:rgba(245,240,232,.4);font-size:12px;cursor:pointer;padding:6px 0">🔑 PIN wijzigen</button>
-        <button onclick="doLogout()" style="background:none;border:none;color:rgba(245,240,232,.4);font-size:12px;cursor:pointer;padding:6px 0">Uitloggen</button>
-      </div>
+      <button onclick="doLogout()" style="background:none;border:none;color:rgba(245,240,232,.4);font-size:12px;cursor:pointer;padding:6px 0">Naam wisselen</button>
     </div>
     <div id="groups-username" style="font-size:13px;color:rgba(245,240,232,.5);margin-bottom:24px"></div>
 
@@ -770,21 +732,6 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
 </div>
 
 <!-- ══ GROEPEN MODALS ══ -->
-<div class="modal-overlay" id="modal-change-pin">
-  <div class="modal">
-    <div class="modal-title">🔑 PIN wijzigen <span class="modal-close" onclick="closeModal('modal-change-pin')">✕</span></div>
-    <label>Huidige PIN</label>
-    <input type="password" id="change-pin-old" placeholder="Huidige PIN of wachtwoord..."
-      style="width:100%;padding:11px 13px;background:rgba(0,0,0,.25);border:1.5px solid rgba(201,168,76,.3);
-      border-radius:10px;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:10px">
-    <label>Nieuwe PIN</label>
-    <input type="password" id="change-pin-new" placeholder="Nieuwe PIN of wachtwoord..."
-      style="width:100%;padding:11px 13px;background:rgba(0,0,0,.25);border:1.5px solid rgba(201,168,76,.3);
-      border-radius:10px;color:var(--cream);font-family:'DM Sans',sans-serif;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:10px">
-    <div id="change-pin-error" style="display:none;color:#e74c3c;font-size:13px;margin-bottom:8px"></div>
-    <button id="change-pin-btn" onclick="doChangePin()" class="btn btn-primary" style="width:100%">PIN wijzigen →</button>
-  </div>
-</div>
 
 <div class="modal-overlay" id="modal-join-group">
   <div class="modal">
@@ -822,7 +769,6 @@ label{font-size:12px;font-weight:600;color:rgba(245,240,232,.7);display:block;ma
     <div class="modal-title">🔴 Admin <span class="modal-close" onclick="closeModal('modal-admin')">✕</span></div>
     <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
       <button class="filter-chip active" onclick="adminTab('groepen')" id="admin-tab-groepen">Groepen</button>
-      <button class="filter-chip" onclick="adminTab('gebruikers')" id="admin-tab-gebruikers">Gebruikers</button>
     </div>
     <div id="admin-content"></div>
   </div>

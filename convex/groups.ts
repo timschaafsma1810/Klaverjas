@@ -15,20 +15,13 @@ export const ensureMigration = mutation({
       return kgRow ? kgRow.value : null;
     }
 
-    // Maak Klaverbassie groep aan (zonder eigenaar — Tibbush registreert zichzelf)
     const groupId = await ctx.db.insert("groups", {
       name: "Klaverbassie",
       joinCode: "klaverbassie",
       createdAt: new Date().toISOString(),
     });
 
-    // Kopieer bestaande data naar groep-specifieke sleutels
-    const dataKeys = [
-      "kj_players",
-      "kj_games_active",
-      "kj_games_history",
-      "kj_tournaments",
-    ];
+    const dataKeys = ["kj_players","kj_games_active","kj_games_history","kj_tournaments"];
     for (const key of dataKeys) {
       const existing = await ctx.db.query("shared")
         .withIndex("by_key", q => q.eq("key", key))
@@ -44,30 +37,16 @@ export const ensureMigration = mutation({
       }
     }
 
-    // Sla groep-ID op voor referentie
-    await ctx.db.insert("shared", {
-      key: "kj_klaverbassie_group_id",
-      value: groupId,
-    });
-    await ctx.db.insert("shared", {
-      key: "kj_migration_done",
-      value: "1",
-    });
-
+    await ctx.db.insert("shared", { key: "kj_klaverbassie_group_id", value: groupId });
+    await ctx.db.insert("shared", { key: "kj_migration_done", value: "1" });
     return groupId;
   },
 });
 
+// Groep aanmaken — geen account nodig
 export const createGroup = mutation({
-  args: {
-    userId: v.id("users"),
-    name: v.string(),
-    joinCode: v.string(),
-  },
-  handler: async (ctx, { userId, name, joinCode }) => {
-    const user = await ctx.db.get(userId);
-    if (!user) throw new Error("Gebruiker niet gevonden");
-
+  args: { name: v.string(), joinCode: v.string() },
+  handler: async (ctx, { name, joinCode }) => {
     const trimCode = joinCode.trim().toLowerCase();
     if (!trimCode) throw new Error("Groepscode is verplicht");
 
@@ -79,93 +58,38 @@ export const createGroup = mutation({
     const groupId = await ctx.db.insert("groups", {
       name: name.trim(),
       joinCode: trimCode,
-      createdBy: userId,
       createdAt: new Date().toISOString(),
     });
-
-    await ctx.db.insert("memberships", {
-      userId,
-      groupId,
-      joinedAt: new Date().toISOString(),
-    });
-
     return groupId;
   },
 });
 
-export const joinGroup = mutation({
-  args: { userId: v.id("users"), joinCode: v.string() },
-  handler: async (ctx, { userId, joinCode }) => {
+// Groep opzoeken via join-code
+export const getGroupByCode = query({
+  args: { joinCode: v.string() },
+  handler: async (ctx, { joinCode }) => {
     const group = await ctx.db.query("groups")
       .withIndex("by_joinCode", q => q.eq("joinCode", joinCode.trim().toLowerCase()))
       .first();
-    if (!group || group.archivedAt) throw new Error("Groep niet gevonden — controleer de code");
-
-    const existing = await ctx.db.query("memberships")
-      .withIndex("by_user_group", q => q.eq("userId", userId).eq("groupId", group._id))
-      .first();
-    if (existing) return group._id;
-
-    await ctx.db.insert("memberships", {
-      userId,
-      groupId: group._id,
-      joinedAt: new Date().toISOString(),
-    });
-
-    return group._id;
+    if (!group || group.archivedAt) return null;
+    const imageUrl = group.imageStorageId
+      ? await ctx.storage.getUrl(group.imageStorageId as any)
+      : null;
+    return { _id: group._id, name: group.name, joinCode: group.joinCode, imageUrl };
   },
 });
 
-export const getMyGroups = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, { userId }) => {
-    const memberships = await ctx.db.query("memberships")
-      .withIndex("by_user", q => q.eq("userId", userId))
-      .collect();
-
-    const groups = [];
-    for (const m of memberships) {
-      const group = await ctx.db.get(m.groupId);
-      if (!group || group.archivedAt) continue;
-
-      const imageUrl = group.imageStorageId
-        ? await ctx.storage.getUrl(group.imageStorageId as any)
-        : null;
-
-      const allMembers = await ctx.db.query("memberships")
-        .withIndex("by_group", q => q.eq("groupId", group._id))
-        .collect();
-
-      groups.push({
-        _id: group._id,
-        name: group.name,
-        joinCode: group.joinCode,
-        createdBy: group.createdBy,
-        imageStorageId: group.imageStorageId,
-        imageUrl,
-        memberCount: allMembers.length,
-        isCreator: group.createdBy === userId,
-        createdAt: group.createdAt,
-      });
-    }
-    return groups;
-  },
-});
-
+// Groepsinstellingen bijwerken
 export const updateGroup = mutation({
   args: {
-    userId: v.id("users"),
     groupId: v.id("groups"),
     name: v.optional(v.string()),
     joinCode: v.optional(v.string()),
     imageStorageId: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, groupId, name, joinCode, imageStorageId }) => {
+  handler: async (ctx, { groupId, name, joinCode, imageStorageId }) => {
     const group = await ctx.db.get(groupId);
     if (!group) throw new Error("Groep niet gevonden");
-
-    const user = await ctx.db.get(userId);
-    if (group.createdBy !== userId && !user?.isAdmin) throw new Error("Geen rechten");
 
     if (joinCode !== undefined) {
       const trimCode = joinCode.trim().toLowerCase();
@@ -182,94 +106,25 @@ export const updateGroup = mutation({
   },
 });
 
-export const removeMember = mutation({
-  args: {
-    requesterId: v.id("users"),
-    targetUserId: v.id("users"),
-    groupId: v.id("groups"),
-  },
-  handler: async (ctx, { requesterId, targetUserId, groupId }) => {
-    const group = await ctx.db.get(groupId);
-    if (!group) throw new Error("Groep niet gevonden");
-
-    const requester = await ctx.db.get(requesterId);
-    if (group.createdBy !== requesterId && !requester?.isAdmin) {
-      throw new Error("Geen rechten");
-    }
-
-    const membership = await ctx.db.query("memberships")
-      .withIndex("by_user_group", q =>
-        q.eq("userId", targetUserId).eq("groupId", groupId)
-      )
-      .first();
-    if (membership) await ctx.db.delete(membership._id);
-  },
-});
-
-export const archiveGroup = mutation({
-  args: { adminId: v.id("users"), groupId: v.id("groups") },
-  handler: async (ctx, { adminId, groupId }) => {
-    const admin = await ctx.db.get(adminId);
-    if (!admin?.isAdmin) throw new Error("Geen admin rechten");
-    await ctx.db.patch(groupId, { archivedAt: new Date().toISOString() });
-  },
-});
-
+// Alle groepen ophalen (admin)
 export const getAllGroups = query({
-  args: { adminId: v.id("users") },
-  handler: async (ctx, { adminId }) => {
-    const admin = await ctx.db.get(adminId);
-    if (!admin?.isAdmin) throw new Error("Geen admin rechten");
-
+  args: {},
+  handler: async (ctx) => {
     const groups = await ctx.db.query("groups").collect();
-    return Promise.all(groups.map(async g => {
-      const members = await ctx.db.query("memberships")
-        .withIndex("by_group", q => q.eq("groupId", g._id))
-        .collect();
-      const memberNames = [];
-      for (const m of members) {
-        const u = await ctx.db.get(m.userId);
-        if (u) memberNames.push(u.name);
-      }
-      return {
-        _id: g._id,
-        name: g.name,
-        joinCode: g.joinCode,
-        memberCount: members.length,
-        memberNames,
-        createdAt: g.createdAt,
-        archivedAt: g.archivedAt,
-      };
+    return groups.map(g => ({
+      _id: g._id,
+      name: g.name,
+      joinCode: g.joinCode,
+      createdAt: g.createdAt,
+      archivedAt: g.archivedAt,
     }));
   },
 });
 
-export const getGroupMembers = query({
-  args: { userId: v.id("users"), groupId: v.id("groups") },
-  handler: async (ctx, { userId, groupId }) => {
-    const isMember = await ctx.db.query("memberships")
-      .withIndex("by_user_group", q => q.eq("userId", userId).eq("groupId", groupId))
-      .first();
-    const user = await ctx.db.get(userId);
-    if (!isMember && !user?.isAdmin) throw new Error("Geen toegang");
-
-    const group = await ctx.db.get(groupId);
-    const memberships = await ctx.db.query("memberships")
-      .withIndex("by_group", q => q.eq("groupId", groupId))
-      .collect();
-
-    const members = [];
-    for (const m of memberships) {
-      const u = await ctx.db.get(m.userId);
-      if (u) {
-        members.push({
-          userId: u._id,
-          name: u.name,
-          joinedAt: m.joinedAt,
-          isCreator: group?.createdBy === u._id,
-        });
-      }
-    }
-    return members;
+// Groep archiveren (admin)
+export const archiveGroup = mutation({
+  args: { groupId: v.id("groups") },
+  handler: async (ctx, { groupId }) => {
+    await ctx.db.patch(groupId, { archivedAt: new Date().toISOString() });
   },
 });
