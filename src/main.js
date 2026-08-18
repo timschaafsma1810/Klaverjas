@@ -578,7 +578,8 @@ function _autoCloseStaleGames(){
   let changed=false;
   games.forEach(g=>{
     if(!g.active||!g.date) return;
-    if(now-new Date(g.date).getTime()<SIX_HOURS) return;
+    const refTime=g.lastActivated?new Date(g.lastActivated).getTime():new Date(g.date).getTime();
+    if(now-refTime<SIX_HOURS) return;
     // Automatisch afsluiten
     g.active=false;
     g.finalWij=g.scoreWij??0;
@@ -2945,6 +2946,7 @@ function editGameFromHistory(id){
   const g=games.find(x=>String(x.id)===String(id));if(!g) return;
   doConfirm('Spel hervatten','Dit spel wordt hervat zodat je het kunt aanpassen.',()=>{
     g.active=true;
+    g.lastActivated=new Date().toISOString();
     delete g.finalWij;
     delete g.finalZij;
     delete g.endDate;
