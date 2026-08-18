@@ -11,7 +11,6 @@ let _userIsAdmin=false;
 let _activeGroupId=null;
 let _activeGroupName=null;
 let _unsubData=null;
-let _authMode='login'; // 'login' | 'register'
 let _statsScope='group'; // 'group' | 'global'
 let _globalPlayers=null;
 let _globalTypeStats=null; // {spelvorm: count}
@@ -39,12 +38,47 @@ function _saveGroupLocally(id,name,joinCode){
 }
 
 // ── Naam-invoer scherm ────────────────────
+let _authSelectedName=null;
+
+function _selectAuthName(name){
+  _authSelectedName=name;
+  document.querySelectorAll('.auth-player-btn').forEach(b=>{
+    b.style.background=b.dataset.name===name?'rgba(201,168,76,.3)':'rgba(255,255,255,.06)';
+    b.style.borderColor=b.dataset.name===name?'var(--gold)':'rgba(201,168,76,.2)';
+  });
+  document.getElementById('auth-name').value='';
+  document.getElementById('auth-error').style.display='none';
+}
+window._selectAuthName=_selectAuthName;
+
+async function _loadAuthPlayers(){
+  const listEl=document.getElementById('auth-player-list');
+  if(!listEl||!_client) return;
+  try{
+    const data=await _client.query(_api.data.getData,{groupId:undefined});
+    const allPlayers=(data?.kj_players||[]).filter(p=>p.name);
+    if(!allPlayers.length){listEl.style.display='none';return;}
+    listEl.innerHTML=`<div style="font-size:12px;font-weight:600;color:rgba(245,240,232,.7);margin-bottom:8px">Wie ben jij?</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">
+        ${allPlayers.map(p=>`
+          <button class="auth-player-btn" data-name="${p.name}" onclick="_selectAuthName('${p.name.replace(/'/g,"\\'")}')"
+            style="padding:8px 14px;border-radius:20px;border:1.5px solid rgba(201,168,76,.2);
+            background:rgba(255,255,255,.06);color:var(--cream);font-family:'DM Sans',sans-serif;
+            font-size:14px;cursor:pointer;transition:all .18s">
+            ${p.name}
+          </button>`).join('')}
+      </div>`;
+  }catch{listEl.style.display='none';}
+}
+
 async function doAuth(){
-  const name=(document.getElementById('auth-name')?.value||'').trim();
+  const typedName=(document.getElementById('auth-name')?.value||'').trim();
+  const name=_authSelectedName||typedName;
   const errEl=document.getElementById('auth-error');
   errEl.style.display='none';
-  if(!name){errEl.textContent='Vul je naam in';errEl.style.display='block';return;}
+  if(!name){errEl.textContent='Kies je naam of vul een nieuwe in';errEl.style.display='block';return;}
   _userName=name;
+  _authSelectedName=null;
   localStorage.setItem('kj_name',name);
   document.getElementById('screen-auth').style.display='none';
   _showGroupsScreen();
@@ -68,33 +102,34 @@ function _showGroupsScreen(){
   _refreshGroupsList();
 }
 
-function _refreshGroupsList(){
+async function _refreshGroupsList(){
   const el=document.getElementById('groups-list');
   if(!el) return;
-  const groups=_getSavedGroups();
-  if(!groups.length){
-    el.innerHTML=`<div style="text-align:center;padding:24px;color:rgba(245,240,232,.4);font-size:13px">
-      <div style="font-size:32px;margin-bottom:8px">🃏</div>
-      <div>Je bent nog geen lid van een groep.</div>
-      <div style="margin-top:4px">Join een groep of maak een nieuwe aan.</div>
-    </div>`;
-    return;
+  el.innerHTML='<div style="text-align:center;padding:20px;color:rgba(245,240,232,.4);font-size:13px">Laden...</div>';
+  try{
+    const groups=await _client.query(_api.groups.getAllGroups,{});
+    if(!groups.length){
+      el.innerHTML=`<div style="text-align:center;padding:24px;color:rgba(245,240,232,.4);font-size:13px">
+        <div style="font-size:32px;margin-bottom:8px">🃏</div>
+        <div>Nog geen groepen. Maak er een aan!</div>
+      </div>`;
+      return;
+    }
+    el.innerHTML=groups.map(g=>`
+      <div onclick="_enterGroup('${g._id}','${g.name.replace(/'/g,"\\'")}');"
+        style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.06);
+        border:1px solid rgba(201,168,76,.2);border-radius:14px;padding:14px 16px;margin-bottom:10px;cursor:pointer">
+        <div style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,rgba(201,168,76,.3),rgba(45,122,79,.4));
+          display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;
+          font-size:22px;font-weight:900;color:var(--gold);flex-shrink:0">${g.name[0].toUpperCase()}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--cream)">${g.name}</div>
+        </div>
+        <span style="color:rgba(201,168,76,.5);font-size:18px">›</span>
+      </div>`).join('');
+  }catch(e){
+    el.innerHTML=`<div style="color:#e74c3c;font-size:13px;padding:10px">Fout: ${e.message}</div>`;
   }
-  el.innerHTML=groups.map(g=>`
-    <div onclick="_enterGroup('${g.id}','${g.name.replace(/'/g,"\\'")}');"
-      style="display:flex;align-items:center;gap:14px;background:rgba(255,255,255,.06);
-      border:1px solid rgba(201,168,76,.2);border-radius:14px;padding:14px 16px;margin-bottom:10px;cursor:pointer">
-      <div style="width:52px;height:52px;border-radius:12px;background:linear-gradient(135deg,rgba(201,168,76,.3),rgba(45,122,79,.4));
-        display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;
-        font-size:22px;font-weight:900;color:var(--gold);flex-shrink:0">${g.name[0].toUpperCase()}</div>
-      <div style="flex:1;min-width:0">
-        <div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--cream)">${g.name}</div>
-        <div style="font-size:12px;color:rgba(245,240,232,.45);margin-top:2px">Code: ${g.joinCode||'—'}</div>
-      </div>
-      <button onclick="event.stopPropagation();openGroupSettings('${g.id}')"
-        style="background:rgba(201,168,76,.1);border:1px solid rgba(201,168,76,.25);color:rgba(201,168,76,.7);
-        border-radius:8px;padding:6px 10px;font-size:13px;cursor:pointer">⚙️</button>
-    </div>`).join('');
 }
 
 function _enterGroup(groupId,groupName){
@@ -139,16 +174,14 @@ async function doJoinGroup(){
 
 async function doCreateGroup(){
   const name=(document.getElementById('create-group-name')?.value||'').trim();
-  const code=(document.getElementById('create-group-code')?.value||'').trim();
   const errEl=document.getElementById('create-group-error');
   errEl.style.display='none';
-  if(!name||!code){errEl.textContent='Vul naam en code in';errEl.style.display='block';return;}
+  if(!name){errEl.textContent='Vul een groepsnaam in';errEl.style.display='block';return;}
+  const code=name.toLowerCase().replace(/\s+/g,'-');
   try{
-    const groupId=await _client.mutation(_api.groups.createGroup,{name,joinCode:code});
-    _saveGroupLocally(groupId,name,code.toLowerCase());
+    await _client.mutation(_api.groups.createGroup,{name,joinCode:code});
     closeModal('modal-create-group');
     document.getElementById('create-group-name').value='';
-    document.getElementById('create-group-code').value='';
     showToast('✓ Groep aangemaakt!');
     _refreshGroupsList();
   }catch(e){
@@ -233,13 +266,6 @@ function adminArchiveGroup(groupId,name){
   });
 }
 
-function adminResetPin(targetId,name){
-  const newPin=prompt(`Nieuwe PIN voor ${name}:`);
-  if(!newPin) return;
-  _client.mutation(_api.auth.resetPin,{adminId:_userId,targetId,newPin})
-    .then(()=>showToast(`✓ PIN van ${name} gereset`))
-    .catch(e=>showToast('Fout: '+e.message,true));
-}
 
 // ── App initialisatie ─────────────────────
 async function _subscribeToGroupData(){
@@ -324,7 +350,7 @@ if (!_convexUrl) {
   } else {
     // Eerste keer → naamscherm
     document.getElementById('screen-auth').style.display='flex';
-    setTimeout(()=>document.getElementById('auth-name')?.focus(),100);
+    setTimeout(()=>{_loadAuthPlayers();document.getElementById('auth-name')?.focus();},200);
   }
 })();
 
@@ -4540,21 +4566,15 @@ Object.assign(window,{
   deleteTournament,
   toggleSound,
   // Auth & groepen
-  authTab,
   doAuth,
   doLogout,
-  openChangePinModal,
-  doChangePin,
   toggleGlobalStats,
   switchGroup,
   doJoinGroup,
   doCreateGroup,
   openGroupSettings,
-  removeMemberFromGroup,
   saveGroupCode,
-  uploadGroupImage,
   openAdminPanel,
   adminTab,
   adminArchiveGroup,
-  adminResetPin,
 });
