@@ -2286,16 +2286,7 @@ function getRoundAward(g,ronde){
   if(special.includes('PIT ZIJ')){
     return {w:0,z:z+rw+rz,roemWij:0,roemZij:rw+rz};
   }
-  // Bieden: bod-bonus toevoegen aan spelende partij als bod behaald
-  if((g?.spelvorm||'traditioneel')==='bieden'&&ronde.bod){
-    const makerId=ronde.spelId||ronde.spelWij||ronde.spelZij;
-    const makerTeam=getTeamForPlayer(g,makerId);
-    const makerKaart=makerTeam==='wij'?w:z;
-    if(makerKaart>=ronde.bod){
-      if(makerTeam==='wij') return {w:w+rw+ronde.bod,z:z+rz,roemWij:rw,roemZij:rz};
-      else return {w:w+rw,z:z+rz+ronde.bod,roemWij:rw,roemZij:rz};
-    }
-  }
+  // Bieden: bod is alleen een drempel, geen bonuspunten — gewoon kaart+roem teruggeven
   return {w:w+rw,z:z+rz,roemWij:rw,roemZij:rz};
 }
 
