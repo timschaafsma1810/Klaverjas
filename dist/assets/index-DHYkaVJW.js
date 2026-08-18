@@ -739,7 +739,7 @@
         ${n(`🌳`,`Meest samen gespeeld`,a[0],a[0]?.games+` bomen`,`openRecordRanking('duo-games')`)}
         ${o[0]?.pts>0?n(`💰`,`Hoogste totaal punten samen`,o[0],o[0].pts.toLocaleString(`nl-NL`)+` punten`,`openRecordRanking('duo-pts')`):``}
         ${s[0]?.nat>0?n(`💧`,`Vaakst samen nat`,s[0],s[0].nat+`× nat`,`openRecordRanking('duo-nat')`):``}
-      </div>`})()}`}function ca(){let e=F.filter(e=>e.active),t=document.getElementById(`active-tafels-section`),n=document.getElementById(`active-tafels-list`);if(t&&n)if(e.length){t.style.display=`block`;let r=localStorage.getItem(`kj_viewing_id`);n.innerHTML=e.map(e=>{let t=q(e,`wij`),n=q(e,`zij`),i=Math.min(e.rounds.length+1,16),a=String(e.id)===r;return`<div class="game-tile" onclick="openTable('${e.id}')" style="cursor:pointer;${a?`border-color:var(--gold);border-width:2px`:``}">
+      </div>`})()}`}function ca(){let e=F.filter(e=>e.active&&!e.deletedAt),t=document.getElementById(`active-tafels-section`),n=document.getElementById(`active-tafels-list`);if(t&&n)if(e.length){t.style.display=`block`;let r=localStorage.getItem(`kj_viewing_id`);n.innerHTML=e.map(e=>{let t=q(e,`wij`),n=q(e,`zij`),i=Math.min(e.rounds.length+1,16),a=String(e.id)===r;return`<div class="game-tile" onclick="openTable('${e.id}')" style="cursor:pointer;${a?`border-color:var(--gold);border-width:2px`:``}">
           <div class="game-tile-header">
             <span class="game-date">🌳 Blaadje ${i}/16 · Takkie ${Math.ceil(i/4)}/4</span>
             ${a?`<span class="tag tag-win">Jouw tafel</span>`:`<span class="tag" style="background:rgba(201,168,76,.15);color:var(--gold)">Open ›</span>`}

@@ -4220,7 +4220,7 @@ function renderRecordsStats(){
 // ══════════════════════════════════════════
 function renderHome(){
   // Actieve tafels
-  const activeGames=games.filter(g=>g.active);
+  const activeGames=games.filter(g=>g.active&&!g.deletedAt);
   const tafelsSection=document.getElementById('active-tafels-section');
   const tafelsEl=document.getElementById('active-tafels-list');
   if(tafelsSection&&tafelsEl){
