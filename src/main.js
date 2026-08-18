@@ -2875,7 +2875,7 @@ function renderHistory(){
 function deleteGame(id){
   doConfirm('Naar prullenbak','Dit spel wordt naar de prullenbak verplaatst. Je kunt het binnen 30 dagen herstellen.',()=>{
     const g=games.find(g=>String(g.id)===String(id));
-    if(g){ g.deletedAt=Date.now(); saveHistory(); recalcPlayerStats(); renderHistory(); showToast('🗑 Naar prullenbak verplaatst'); }
+    if(g){ g.deletedAt=Date.now(); g.active=false; if(current&&String(current.id)===String(id)){current=null;localStorage.removeItem('kj_viewing_id');} saveAll(); recalcPlayerStats(); renderHistory(); showToast('🗑 Naar prullenbak verplaatst'); }
   });
 }
 
